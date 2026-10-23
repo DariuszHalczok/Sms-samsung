@@ -71,8 +71,24 @@ class MainActivity : Activity() {
     }
 
     private fun readIntent(incoming: Intent?) {
-        if (incoming?.action == Intent.ACTION_SEND && incoming.type == "text/plain")
-            message.setText(incoming.getStringExtra(Intent.EXTRA_TEXT).orEmpty())
+        when {
+            incoming?.action == Intent.ACTION_SEND && incoming.type == "text/plain" ->
+                message.setText(incoming.getStringExtra(Intent.EXTRA_TEXT).orEmpty())
+            incoming?.action == Intent.ACTION_VIEW &&
+                incoming.data?.scheme == "smssamsung" &&
+                incoming.data?.host == "compose" -> {
+                // Import draft text only; never accept recipients or send instructions from links.
+                val body = incoming.data?.getQueryParameter("text").orEmpty()
+                if (body.isNotBlank()) {
+                    if (body.length > 4000) {
+                        toast("Wiadomość jest za długa (maks. 4000 znaków)")
+                    } else {
+                        message.setText(body)
+                        toast("Zaimportowano szkic. Wybierz odbiorców i sprawdź treść.")
+                    }
+                }
+            }
+        }
     }
 
     private fun ensureContactsAccess() {
