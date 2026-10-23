@@ -1,28 +1,44 @@
-# SMS Samsung — Asystent SMS (beta 0.2)
+# SMS Samsung — szkice SMS, beta 0.4.0
 
-Aplikacja Android 16 / Galaxy S24 Ultra. Działa na danych kontaktowych widocznych na telefonie (w tym zsynchronizowanych z kontem Google).
+Android 8+ (min SDK 26), compile/target SDK 36. Docelowy telefon: Samsung Galaxy S24 Ultra / Android 16. **Wersja testowa, integracja backendowa oczekuje na wdrożenie.**
 
-## Funkcje beta 0.2
-- Wyszukuj kontakty po imieniu lub nazwisku i zaznaczaj wielu odbiorców.
-- Wybieraj grupy kontaktów, o ile są dostępne przez systemowy Contacts Provider.
-- Dyktuj **treść** wiadomości przez usługę rozpoznawania mowy Android.
-- Udostępniaj tekst z aplikacji ChatGPT do SMS Samsung przez systemowe menu "Udostępnij", a następnie wybieraj odbiorców.
-- Przed wysyłką wyświetlany jest podgląd odbiorców i wiadomości.
-- Każdego SMS-a otwiera się indywidualnie w domyślnej aplikacji SMS; wysłanie wymaga ręcznego potwierdzenia. Aplikacja nie stwierdza, czy SMS rzeczywiście wysłano.
+Doradca.pro jest jedynym CRM: odpowiada za klientów, produkty OVB, segmenty, zgody, wykluczenia kontaktu, powtórzenia, rezerwacje i analitykę. Telefon przechowuje tylko roboczą paczkę w pamięci sesji. Nie ma integracji Bitrix.
 
-## Ograniczenia
-- **Polecenie wypowiedziane w samej rozmowie ChatGPT nie uruchamia jeszcze aplikacji ani nie odczytuje jej kontaktów.** To wymaga oddzielnego, świadomie autoryzowanego mostu integracyjnego (np. backend + parowanie urządzenia i powiadomienie aplikacji albo obsługa linku w urządzeniu).
-- Dyktowanie w aplikacji rozpoznaje treść, a nie polecenia rozpoznawania nazwisk.
-- Wybór grup zależy od konta i sposobu synchronizacji; nie wszystkie etykiety Google Contacts są wystawiane jako systemowe grupy.
-- Nie korzysta z SEND_SMS i nie wysyła automatycznie. Brak masowej wysyłki bezpośredniej.
-- Wymaga uprawnienia READ_CONTACTS udzielonego na telefonie. Nie wysyła książki kontaktów na serwer.
-- Numery różnych formatów mogą pojawić się podwójnie; przed wysyłką należy zweryfikować listę.
+## Działanie
 
-## Instalacja
-Otwórz [Actions](https://github.com/DariuszHalczok/Sms-samsung/actions), wybierz najnowsze udane uruchomienie **Build Android APK**, pobierz artefakt `sms-samsung-debug-apk`, rozpakuj ZIP i zainstaluj APK. Wersja debugowa wymaga testów i nie służy do dystrybucji produkcyjnej.
+- Wybór osób lub grup z telefonu (opcjonalne READ_CONTACTS), import zatwierdzonego CSV UTF-8, maks. 30 unikalnych odbiorców na każdej ścieżce. Numery walidowane przez libphonenumber i normalizowane do E.164 (domyślny kraj PL).
+- CSV z przecinkiem/średnikiem, BOM, cytowanymi polami, podwojonymi cudzysłowami i wielowierszowymi dodatkowymi kolumnami. Błędy odrzucają całą paczkę; bez cichego pomijania klientów.
+- Edycja/dyktowanie, szablony hipoteczne/polisowe/IKZE, personalizacja `{imie}` / `{imię}`, `{nazwisko}`, `{link}`. Brak wymaganej wartości blokuje podgląd. Szablony startowe nie wymagają linku.
+- Podgląd **każdego** odbiorcy, numeru, treści i szacunkowej liczby segmentów GSM-7/Unicode. Koszt zależy od operatora.
+- Potwierdzenie sprawdzenia podstaw kontaktu w CRM. To oświadczenie użytkownika, **nie serwerowa weryfikacja zgód**.
+- Przycisk otwiera pojedynczy szkic przez `ACTION_SENDTO smsto:`. Wysłanie wymaga decyzji w aplikacji SMS. Status: „szkic” lub „edytor otwarty — wysłanie nieznane”. Brak SEND_SMS, odbioru wiadomości i potwierdzeń doręczenia.
+- Obrót ekranu zachowuje stan wyłącznie w ViewModel. Zakończenie Activity lub śmierć procesu kończy sesję. Przycisk „Wyczyść sesję” usuwa odbiorców, linki, treść i wyszukiwanie. Historia przechowuje tylko czas i liczbę odbiorców (do 30 wpisów), ma osobne czyszczenie.
 
-## Połączenie z ChatGPT — szkic wiadomości
-- W ChatGPT przygotuj tekst i użyj **Udostępnij** → **SMS Samsung** (Android). To najprostsza metoda przekazania treści.
-- Alternatywnie aplikacja obsługuje link `smssamsung://compose?text=...` (tekst powinien być zakodowany w URL). Zewnętrzne aplikacje mogą różnie traktować linki niestandardowych schematów.
-- Import przekazuje **wyłącznie treść SMS** (do 4000 znaków). Odbiorców wybierasz na telefonie. Żaden SMS nie jest wysyłany automatycznie.
-- Wydawanie poleceń w czacie głosowym nie daje aplikacji dostępu do kontaktów i nie uruchamia jej bezpośrednio. Do tego potrzebna byłaby dodatkowa integracja z autoryzowanym backendem i uwierzytelnianiem telefonu.
+## Integracja — jawne ograniczenia
+
+Pobieranie API i ręczny formularz tokenu zostały wyłączone: dostępne materiały Doradca.pro nie potwierdzają działającego kontraktu kampanii ani OAuth/parowania. Aplikacja nie ma uprawnienia INTERNET. Nie sprawdzono autoryzacji na działającym serwerze. Szczegóły: [audyt i blokery](docs/P0_AUDIT.md).
+
+Stary `smssamsung://compose?text=...` został usunięty z manifestu, aby nie przekazywać treści ani danych klientów w URL. Link z wygasającym opaque kodem kampanii wymaga rzeczywistego backendu i pozostaje wyłączony. Można użyć Android „Udostępnij” → SMS Samsung, sprawdzić tekst i potwierdzić import; odbiorców należy wybrać ponownie. Eksportowany launcher ignoruje obce extras. Nie ma automatycznego połączenia z rozmową ChatGPT.
+
+`{link}` działa tylko z indywidualnym linkiem dostarczonym przez przyszłą autoryzowaną integrację. Obecny CSV przyjmuje imię/nazwę i telefon, bez linków. Walidator przyszłych linków dopuszcza HTTPS na dokładnym hoście doradca.pro, port domyślny/443, bez userinfo, query, fragmentów i kodowania ścieżki. Sam walidator nie potwierdza ważności ani zgody na link. Kliknięcia, boty podglądu, rezerwacje i konwersje musi mierzyć Doradca.pro; zwykły SMS nie pozwala określić odczytu.
+
+## Prywatność
+
+Brak trwałej bazy klientów, zapisów treści/numerów/linków, tokenów, logowania PII i backupu aplikacji. Pola nie zapisują stanu do Bundle; autofill i spersonalizowane uczenie klawiatury są wyłączone. Ekrany i dialogi mają FLAG_SECURE. Systemowa klawiatura, usługa dyktowania, źródłowy CSV i aplikacja SMS mają własne zasady przechowywania danych; aplikacja nie usuwa tych danych. Weryfikacja aktualnych zgód i powtórzeń po stronie CRM pozostaje blokerem produkcyjnym.
+
+## Build i instalacja
+
+JDK 17, Android SDK 36; Gradle Wrapper 8.11.1 z SHA-256 dystrybucji:
+
+```sh
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
+./gradlew :app:connectedDebugAndroidTest
+```
+
+GitHub [Actions](https://github.com/DariuszHalczok/Sms-samsung/actions) uruchamia testy jednostkowe, lint, kompilację i testy instrumentalne na emulatorze API 36. Z udanego uruchomienia pobierz `sms-samsung-debug-apk`, rozpakuj i sprawdź SHA256SUMS. APK jest podpisany kluczem **debug**, którego podpis weryfikuje CI; nie jest to podpis produkcyjny ani stabilny klucz aktualizacji pomiędzy runnerami CI.
+
+```sh
+adb install -r app-debug.apk
+```
+
+Przy konflikcie podpisów poprzedniego debug APK potrzebna może być deinstalacja starej aplikacji (usuwa jej historię). Ręczna instalacja na Samsungu wymaga zezwolenia na instalację z wybranego źródła. Test urządzeniowy opisano w [planie walidacji](docs/VALIDATION.md). CI nie wysyła SMS-ów i nie uruchamia edytora SMS. Emulator nie zastępuje testu na fizycznym S24 Ultra.

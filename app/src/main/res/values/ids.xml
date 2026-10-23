@@ -1,0 +1,7 @@
+<resources>
+    <item name="message" type="id" />
+    <item name="search" type="id" />
+    <item name="recipients" type="id" />
+    <item name="preview" type="id" />
+    <item name="clear_session" type="id" />
+</resources>
