@@ -5,6 +5,7 @@
 - JVM: normalizacja PL/zagraniczna, błędne numery/rozszerzenia, atomowa zmiana paczki 1/20/30/31, duplikaty i konflikt linków, pola szablonów, brak linku, limity po podstawieniu, polityka URL, segmenty GSM-7/Unicode i emoji.
 - CSV: BOM/UTF-8, aliasy, CRLF/LF, cytowane separatory/podwojone cudzysłowy/nowe linie w dodatkowej kolumnie, częściowe odczyty strumienia, nieprawidłowe UTF-8, rozmiar, błędne cudzysłowy/kolumny/numer, duplikaty, 1/20/30/31.
 - Android API 36 emulator: rotacja z zachowaniem sesji w pamięci, czyszczenie, nowa Activity po zakończeniu nie ma szkicu, ignorowanie nieufnych extras/starego deep linku, wymagane potwierdzenie weryfikacji zgód, intencja jednego edytora i odporność historii na uszkodzony JSON. Test intencji **nie uruchamia** aplikacji SMS.
+- Osobny smoke ADB na emulatorze API 36: wpisanie syntetycznego szkicu, przeniesienie aplikacji w tło, `am kill` bez usuwania zadania, uruchomienie nowego procesu i sprawdzenie, że szkic nie wraca. Wyłącznie metadane pass/fail, bez uruchamiania edytora SMS.
 - Lint i kompilacja APK z manifestem bez SEND_SMS/INTERNET. CI weryfikuje podpis debug przez apksigner i publikuje SHA256SUMS.
 
 Wynik kompilacji, wynik emulatora i test fizycznego telefonu to odrębne dowody. Rzeczywiste wyniki są powiązane z uruchomieniem Actions i opisem PR. Nie traktować powyższej listy jako deklaracji zaliczonych testów przed zakończeniem CI.
