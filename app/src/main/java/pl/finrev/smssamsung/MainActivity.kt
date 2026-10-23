@@ -104,6 +104,7 @@ class MainActivity : ComponentActivity() {
         findViewById<View>(R.id.choose_recipient).isEnabled = list.isNotEmpty()
         findViewById<View>(R.id.remove_recipient).visibility = if (selected == null) View.GONE else View.VISIBLE
         findViewById<TextView>(R.id.mode).text = session.mode?.label ?: getString(R.string.mode_empty)
+        findViewById<View>(R.id.mode_hint).visibility = if (session.mode == null) View.GONE else View.VISIBLE
         findViewById<TextView>(R.id.mode_hint).setText(when (session.mode) {
             CommunicationMode.PRIVATE -> R.string.mode_private_hint
             CommunicationMode.REQUESTED -> R.string.mode_requested_hint
@@ -124,7 +125,7 @@ class MainActivity : ComponentActivity() {
                     session.changeMode(chosen); message.setText(session.body); render()
                     if (chosen == CommunicationMode.MARKETING) toast(R.string.mode_marketing_hint)
                 }
-                if (chosen != session.mode && (session.body.isNotBlank() || session.material != null)) {
+                if (session.mode != null && chosen != session.mode && (session.body.isNotBlank() || session.material != null)) {
                     show(AlertDialog.Builder(this).setTitle(R.string.mode_change_title).setMessage(R.string.mode_change_body)
                         .setNegativeButton(R.string.cancel, null).setPositiveButton(R.string.mode_change_confirm) { _, _ -> apply() })
                 } else apply()

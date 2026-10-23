@@ -28,6 +28,16 @@ class DraftSessionTest {
         assertThrows(IllegalArgumentException::class.java) { session.select(person(31).phone) }
         assertEquals(30, session.batch.all().size); assertEquals("Test 5", session.selected()?.name)
     }
+    @Test fun firstExplicitModePreservesImportedTextWithoutInferringThePurpose() {
+        val session = DraftSession()
+        session.body = "Synthetic shared draft"
+        assertNull(session.mode)
+        session.changeMode(CommunicationMode.PRIVATE)
+        assertEquals("Synthetic shared draft", session.body)
+        assertEquals(CommunicationMode.PRIVATE, session.mode)
+        session.changeMode(CommunicationMode.REQUESTED)
+        assertEquals("", session.body)
+    }
     @Test fun changingModeClearsBoundContentAndMaterialButKeepsExplicitlySelectedPerson() {
         val session = DraftSession()
         session.addPicked(person(1)); session.mode = CommunicationMode.REQUESTED

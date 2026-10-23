@@ -33,7 +33,8 @@ class DraftSession : ViewModel() {
     }
     fun changeMode(chosen: CommunicationMode) {
         if (mode == chosen) return
-        mode = chosen; body = ""; clearMaterial()
+        if (mode != null) body = ""
+        mode = chosen; clearMaterial()
     }
     fun clearMaterial() {
         material = null; publicProfile = ""; changed()

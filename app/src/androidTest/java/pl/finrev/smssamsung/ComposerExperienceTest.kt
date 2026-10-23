@@ -47,6 +47,21 @@ class ComposerExperienceTest {
             assertEquals(profile,store.load()); assertEquals(setOf("public_id"),prefs.all.keys)
         } finally { store.clear() }
     }
+    @Test fun firstPurposeChoiceKeepsSharedDraftAndDoesNotAskToDiscardIt() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            scenario.onActivity { activity ->
+                activity.findViewById<EditText>(R.id.message).setText("Synthetic shared draft")
+                assertNull(ViewModelProvider(activity)[DraftSession::class.java].mode)
+                activity.findViewById<android.view.View>(R.id.choose_mode).performClick()
+            }
+            onView(withText(CommunicationMode.PRIVATE.label)).inRoot(isDialog()).perform(click())
+            onView(withText(R.string.mode_change_title)).check(androidx.test.espresso.assertion.ViewAssertions.doesNotExist())
+            scenario.onActivity { activity ->
+                assertEquals("Synthetic shared draft", activity.findViewById<EditText>(R.id.message).text.toString())
+                assertEquals(CommunicationMode.PRIVATE, ViewModelProvider(activity)[DraftSession::class.java].mode)
+            }
+        }
+    }
     @Test fun cancelingModeChangeKeepsDraftAndConfirmingClearsIt() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->

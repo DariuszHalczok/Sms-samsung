@@ -6,7 +6,7 @@ Rozwinięcie 0.6 po audycie zgodności. Nie zmienia modelu przesyłania danych a
 
 - Ekran XML z sekcjami celu, wybranej osoby, zamówionego materiału i treści. Zasoby tekstowe, motyw, ikona i wielkości w dp/sp zamiast surowych pikseli.
 - Wybór aktywnej osoby i usunięcie jednego kontaktu; bez kolejki i automatycznego wybierania kolejnego. Ponowny wybór tego samego numeru aktualizuje tylko jego nazwę.
-- Potwierdzenie przed wyczyszczeniem treści przy zmianie celu; anulowanie zachowuje szkic. Zastąpienie treści gotową odpowiedzią także wymaga decyzji.
+- Pierwszy jawny wybór celu zachowuje zaimportowany szkic. Potwierdzenie przed wyczyszczeniem treści przy późniejszej zmianie celu; anulowanie zachowuje szkic. Zastąpienie treści gotową odpowiedzią także wymaga decyzji.
 - Publiczny profil doradcy zapisany w oddzielnym ustawieniu. Walidacja UUID, usuwanie nieznanych pól, brak tokenów, danych kontaktów i treści. „Wyczyść szkic i kontakty” go zachowuje; opcje profilu umożliwiają usunięcie. Zmiana profilu unieważnia powiązany materiał/treść i wynik żądania w toku.
 - Przygotowane odpowiedzi wyłącznie dla wybranego zamówionego materiału; wybór szablonu nie ustala podstawy prawnej. Każdy podgląd wymaga nowego oświadczenia o kontekście.
 - Bieżące informacje o długości szkicu przed personalizacją, pełny przeliczony podgląd przed edytorem. Stan wczytywania i komunikaty o wyniku pominiętym po zmianie szkicu.
