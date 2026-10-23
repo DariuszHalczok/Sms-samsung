@@ -20,3 +20,9 @@ Aplikacja Android 16 / Galaxy S24 Ultra. Działa na danych kontaktowych widoczny
 
 ## Instalacja
 Otwórz [Actions](https://github.com/DariuszHalczok/Sms-samsung/actions), wybierz najnowsze udane uruchomienie **Build Android APK**, pobierz artefakt `sms-samsung-debug-apk`, rozpakuj ZIP i zainstaluj APK. Wersja debugowa wymaga testów i nie służy do dystrybucji produkcyjnej.
+
+## Połączenie z ChatGPT — szkic wiadomości
+- W ChatGPT przygotuj tekst i użyj **Udostępnij** → **SMS Samsung** (Android). To najprostsza metoda przekazania treści.
+- Alternatywnie aplikacja obsługuje link `smssamsung://compose?text=...` (tekst powinien być zakodowany w URL). Zewnętrzne aplikacje mogą różnie traktować linki niestandardowych schematów.
+- Import przekazuje **wyłącznie treść SMS** (do 4000 znaków). Odbiorców wybierasz na telefonie. Żaden SMS nie jest wysyłany automatycznie.
+- Wydawanie poleceń w czacie głosowym nie daje aplikacji dostępu do kontaktów i nie uruchamia jej bezpośrednio. Do tego potrzebna byłaby dodatkowa integracja z autoryzowanym backendem i uwierzytelnianiem telefonu.
