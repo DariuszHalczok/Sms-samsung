@@ -10,10 +10,12 @@ import javax.net.ssl.HttpsURLConnection
 /** No recipient, body, auth, cookie, query or analytics field enters this transport. */
 fun interface CatalogTransport { fun fetch(publicProfile: String): ByteArray }
 
-class HttpsCatalogTransport : CatalogTransport {
+class HttpsCatalogTransport(
+    private val open: (URL) -> HttpsURLConnection = { it.openConnection() as HttpsURLConnection }
+) : CatalogTransport {
     override fun fetch(publicProfile: String): ByteArray {
         val id = PublicProfile.validate(publicProfile)
-        val connection = URL("https://doradca.pro/api/relationship/catalog/$id").openConnection() as HttpsURLConnection
+        val connection = open(URL("https://doradca.pro/api/relationship/catalog/$id"))
         try {
             connection.apply {
                 requestMethod = "GET"; doOutput = false; useCaches = false; instanceFollowRedirects = false

@@ -33,6 +33,30 @@ class CatalogContractTest {
             assertThrows(Exception::class.java) { MaterialCatalog { bytes }.load(profile) }
         }
     }
+    @Test fun httpsRequestIsGetWithoutBodyAuthQueryOrRedirects() {
+        var connection: javax.net.ssl.HttpsURLConnection? = null
+        val transport = HttpsCatalogTransport { url ->
+            object : javax.net.ssl.HttpsURLConnection(url) {
+                override fun connect() = Unit
+                override fun disconnect() = Unit
+                override fun usingProxy() = false
+                override fun getCipherSuite() = "test-only"
+                override fun getLocalCertificates(): Array<java.security.cert.Certificate>? = null
+                override fun getServerCertificates(): Array<java.security.cert.Certificate> = emptyArray()
+                override fun getResponseCode() = 200
+                override fun getContentType() = "application/json"
+                override fun getInputStream() = java.io.ByteArrayInputStream(fixture())
+                override fun getOutputStream(): java.io.OutputStream = throw AssertionError("Request body forbidden")
+            }.also { connection = it }
+        }
+        assertEquals(listOf(Material.IKZE), MaterialCatalog(transport).load(profile))
+        val request = connection!!
+        assertEquals("https://doradca.pro/api/relationship/catalog/$profile", request.url.toString())
+        assertEquals("GET", request.requestMethod)
+        assertFalse(request.doOutput); assertFalse(request.instanceFollowRedirects); assertFalse(request.useCaches)
+        assertNull(request.getRequestProperty("Authorization")); assertNull(request.getRequestProperty("Cookie"))
+        assertNull(request.url.query); assertNull(request.url.ref); assertNull(request.url.userInfo)
+    }
     @Test fun malformedPublicIdFailsBeforeAnyNetworkRequest() {
         var called = false
         assertThrows(IllegalArgumentException::class.java) { MaterialCatalog { called = true; fixture() }.load("+12025550101") }

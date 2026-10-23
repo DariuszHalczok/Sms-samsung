@@ -91,6 +91,13 @@ class SessionSmokeTest {
         assertEquals(android.provider.ContactsContract.CommonDataKinds.Phone.CONTENT_URI, picker.data)
         assertEquals(0, picker.flags and Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
     }
+    @Test fun pickerRejectsBroadForeignOrParameterizedUrisWithoutReadingProvider() {
+        val resolver = ApplicationProvider.getApplicationContext<android.content.Context>().contentResolver
+        for (uri in listOf("content://com.android.contacts/data", "content://evil.test/data/1",
+            "content://com.android.contacts/data/1?phone=example", "file:///tmp/contact")) {
+            assertThrows(IllegalArgumentException::class.java) { ContactPicker.read(resolver, android.net.Uri.parse(uri)) }
+        }
+    }
     @Test fun marketingRemainsBlockedWithoutOpeningAReviewDialog() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
