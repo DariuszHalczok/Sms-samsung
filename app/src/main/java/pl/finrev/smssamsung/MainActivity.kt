@@ -18,6 +18,7 @@ class MainActivity : Activity() {
     private lateinit var message: EditText
     private val selected = linkedMapOf<String, String>()
     private val speechCode = 100
+    private val importCode = 102
     private val permissionCode = 101
     private var pendingSearch = false
 
@@ -36,6 +37,7 @@ class MainActivity : Activity() {
         search = EditText(this).apply { hint = "Wyszukaj osoby lub grupę po nazwie" }
         layout.addView(search)
         button("Znajdź kontakty / grupy") { ensureContactsAccess() }
+        button("Importuj listę klientów z Doradca.pro (CSV)") { importCsv() }
         recipients = TextView(this).apply { text = "Odbiorcy: brak"; textSize = 16f }
         layout.addView(recipients)
         button("Wyczyść odbiorców") { selected.clear(); renderRecipients() }
@@ -88,6 +90,58 @@ class MainActivity : Activity() {
                     }
                 }
             }
+        }
+    }
+
+    private fun importCsv() {
+        try {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/csv", "text/plain", "application/csv", "application/octet-stream"))
+            }, importCode)
+        } catch (_: Exception) { toast("Nie można otworzyć wyboru pliku") }
+    }
+
+    private fun importCsvData(uri: Uri) {
+        try {
+            val bytes = contentResolver.openInputStream(uri)?.use { input ->
+                val buffer = ByteArray(131073)
+                val count = input.read(buffer)
+                if (count < 0) ByteArray(0) else {
+                    if (count > 131072 || input.read() != -1) throw IllegalArgumentException("Plik przekracza 128 KB")
+                    buffer.copyOf(count)
+                }
+            } ?: throw IllegalArgumentException("Nie można odczytać pliku")
+            val rows = bytes.toString(Charsets.UTF_8).removePrefix("\uFEFF").lines().filter { it.isNotBlank() }
+            if (rows.size < 2) throw IllegalArgumentException("Brak klientów w pliku")
+            val delimiter = if (rows.first().count { it == ';' } > rows.first().count { it == ',' }) ';' else ','
+            val headers = rows.first().split(delimiter).map { it.trim().lowercase(Locale.ROOT) }
+            val phoneIndex = headers.indexOfFirst { it in listOf("phone", "telefon", "numer", "mobile") }
+            val nameIndex = headers.indexOfFirst { it in listOf("name", "imie", "imię", "klient", "nazwisko") }
+            if (phoneIndex < 0) throw IllegalArgumentException("Brak kolumny phone lub telefon")
+            val imported = linkedMapOf<String, String>()
+            for (line in rows.drop(1)) {
+                val cells = line.split(delimiter).map { it.trim().trim('"') }
+                val rawPhone = cells.getOrNull(phoneIndex).orEmpty()
+                val phone = normalizePhone(rawPhone)
+                if (!phone.matches(Regex("\\+[0-9]{9,15}"))) continue
+                imported[phone] = if (nameIndex >= 0) cells.getOrNull(nameIndex)?.take(100)?.ifBlank { phone } ?: phone else phone
+                if (imported.size > 30) throw IllegalArgumentException("Maksymalnie 30 klientów na jedną partię")
+            }
+            if (imported.isEmpty()) throw IllegalArgumentException("Nie znaleziono poprawnych numerów")
+            AlertDialog.Builder(this).setTitle("Import z Doradca.pro")
+                .setMessage("Wczytano ${imported.size} unikalnych odbiorców. Zastąpić bieżącą listę?\n\nSprawdź zgody i cel wysyłki. Nic nie zostanie wysłane automatycznie.")
+                .setNegativeButton("Anuluj", null)
+                .setPositiveButton("Załaduj listę") { _, _ ->
+                    selected.clear()
+                    selected.putAll(imported)
+                    renderRecipients()
+                }.show()
+        } catch (e: Exception) {
+            AlertDialog.Builder(this).setTitle("Błąd importu")
+                .setMessage(e.message ?: "Nieprawidłowy plik CSV")
+                .setPositiveButton("OK", null).show()
         }
     }
 
@@ -255,6 +309,9 @@ class MainActivity : Activity() {
     @Deprecated("Android speech result")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == importCode && resultCode == RESULT_OK) {
+            data?.data?.let { importCsvData(it) }
+        }
         if (requestCode == speechCode && resultCode == RESULT_OK) {
             val dictated = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull().orEmpty()
             if (dictated.isNotEmpty()) {
