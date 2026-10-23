@@ -15,7 +15,10 @@ REPORTS.mkdir(parents=True, exist_ok=True)
 
 
 def adb(*args, check=True):
-    return subprocess.run(['adb', *args], check=check, capture_output=True).stdout
+    result = subprocess.run(['adb', *args], capture_output=True)
+    if check and result.returncode:
+        raise RuntimeError('ADB command failed: ' + result.stderr.decode(errors='replace')[:500])
+    return result.stdout
 
 
 def message_node():
@@ -33,6 +36,10 @@ def message_node():
     raise AssertionError('Message field not visible')
 
 
+assert adb('shell', 'getprop', 'ro.kernel.qemu').strip() == b'1', 'This script requires an emulator'
+assert adb('shell', 'getprop', 'ro.build.version.sdk').strip() == b'36', 'This script requires API 36'
+# connectedAndroidTest removes its installations as part of device cleanup.
+adb('install', '-r', 'app/build/outputs/apk/debug/app-debug.apk')
 adb('shell', 'am', 'force-stop', PACKAGE)
 adb('shell', 'input', 'keyevent', 'KEYCODE_WAKEUP')
 adb('shell', 'wm', 'dismiss-keyguard')
