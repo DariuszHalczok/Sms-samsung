@@ -29,6 +29,8 @@ jobs:
       - name: Install SDK 36
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
+      - name: Test emulator host controls without dispatching ADB
+        run: python3 -m unittest discover -s scripts/tests -p 'test_*.py'
       - name: Unit tests, lint and APKs (no SMS dispatch)
         run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease
       - name: Verify least permissions in both variants
