@@ -7,7 +7,7 @@ const val MAX_RECIPIENTS = 30
 const val MAX_MESSAGE = 4000
 
 // Deliberately exclude customer fields from generated toString/log messages.
-class Recipient(val phone: String, val name: String, val clickUrl: String = "") {
+class Recipient(val phone: String, val name: String) {
     override fun toString() = "Recipient(redacted)"
 }
 
@@ -47,12 +47,11 @@ class RecipientBatch {
             require(candidate.name.length <= 100 && candidate.name.none { it.isISOControl() }) {
                 "Niepoprawna nazwa odbiorcy"
             }
-            if (candidate.clickUrl.isNotEmpty()) DoradcaUrls.validate(candidate.clickUrl)
             val previous = checked[phone]
-            require(previous == null || (previous.name == candidate.name && previous.clickUrl == candidate.clickUrl)) {
+            require(previous == null || previous.name == candidate.name) {
                 "Sprzeczne dane powtórzonego odbiorcy"
             }
-            checked[phone] = Recipient(phone, candidate.name.trim(), candidate.clickUrl)
+            checked[phone] = Recipient(phone, candidate.name.trim())
             require(checked.size <= MAX_RECIPIENTS) { "Maksymalnie 30 odbiorców na paczkę" }
         }
         entries.clear()
@@ -61,15 +60,15 @@ class RecipientBatch {
 }
 
 object DoradcaUrls {
-    // Reserved for a future verified backend. No endpoint or network flow is enabled.
+    // Only stable public advisor/material addresses, never recipient codes.
     fun validate(value: String): URI {
         val uri = try { URI(value) } catch (_: Exception) {
             throw IllegalArgumentException("Niepoprawny adres Doradca.pro")
         }
         require(value.length <= 2048 && uri.scheme == "https" && uri.host == "doradca.pro" &&
-            uri.rawUserInfo == null && uri.port in listOf(-1, 443) && uri.rawFragment == null &&
+            uri.rawUserInfo == null && uri.port == -1 && uri.rawFragment == null &&
             uri.rawQuery == null && !uri.rawPath.orEmpty().contains('%') &&
-            !uri.path.orEmpty().contains("..") && uri.path.orEmpty().matches(Regex("/[A-Za-z0-9/_-]*"))) {
+            uri.path.orEmpty().matches(Regex("/edukacja/${PublicProfile.PATTERN}/(${Material.entries.joinToString("|") { it.slug }})"))) {
             "Wymagany bezpieczny adres HTTPS Doradca.pro bez danych w zapytaniu"
         }
         return uri
@@ -77,12 +76,12 @@ object DoradcaUrls {
 }
 
 object Templates {
-    fun render(template: String, recipient: Recipient): String {
+    fun render(template: String, recipient: Recipient, publicLink: String = ""): String {
         require(template.isNotBlank() && template.length <= MAX_MESSAGE) { "Treść musi mieć od 1 do 4000 znaków" }
         val name = recipient.name.trim()
         val values = mapOf(
             "imie" to name.substringBefore(' '), "imię" to name.substringBefore(' '),
-            "nazwisko" to name.substringAfter(' ', ""), "link" to recipient.clickUrl
+            "nazwisko" to name.substringAfter(' ', ""), "link" to publicLink
         )
         // A single substitution pass prevents placeholders inside names becoming instructions.
         val rendered = Regex("\\{([^{}]+)\\}").replace(template) { match ->
@@ -95,6 +94,7 @@ object Templates {
             '{' !in rendered && '}' !in rendered && rendered.none { it.isISOControl() && it != '\n' && it != '\r' }) {
             "Niepoprawna treść lub wiadomość przekracza 4000 znaków"
         }
+        Regex("(?i)(?:https?://|www\\.)\\S+").findAll(rendered).forEach { DoradcaUrls.validate(it.value) }
         return rendered
     }
 }

@@ -1,3 +1,5 @@
+> Dokument historyczny (0.3–0.5). Wymagania sprzeczne z Compliance & Security 1.0 z 23.10.2026 są wycofane. Aktualny zakres: [audyt](COMPLIANCE_AUDIT_2026-10-23.md) i [README](../README.md). Nie wdrażać poczekalni, linków per odbiorca, synchronizacji kontaktów ani dawnych kolejek.
+
 # Audyt P0 i status integracji — 2026-10-23
 
 Punkt wyjścia Android: `43cc6bcd9c0ea099bdddd95c9bf175118bd5f4de`. Wersja po zmianach: 0.4.0, beta, integration pending. Nie wysyłano SMS-ów.

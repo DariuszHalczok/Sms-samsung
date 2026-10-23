@@ -1,3 +1,5 @@
+> Dokument historyczny (0.3–0.5). Wymagania sprzeczne z Compliance & Security 1.0 z 23.10.2026 są wycofane. Aktualny zakres: [audyt](COMPLIANCE_AUDIT_2026-10-23.md) i [README](../README.md). Nie wdrażać poczekalni, linków per odbiorca, synchronizacji kontaktów ani dawnych kolejek.
+
 # Ciepły Rynek — pilot 0.5.0
 
 Nowy moduł przygotowuje do 30 indywidualnych szkiców z imionami i linkami Doradca.pro. Telefon pozostaje terminalem: każdy SMS otwierany wyłącznie przez ACTION_SENDTO `smsto:` i zatwierdzany ręcznie. Nie ma SEND_SMS, czytania wiadomości ani statusu „wysłano”.

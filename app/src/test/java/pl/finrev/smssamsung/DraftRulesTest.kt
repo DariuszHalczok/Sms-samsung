@@ -4,8 +4,8 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DraftRulesTest {
-    private fun recipient(i: Int = 1, name: String = "Test Example", link: String = "") =
-        Recipient("+120255501${i.toString().padStart(2, '0')}", name, link)
+    private fun recipient(i: Int = 1, name: String = "Test Example") =
+        Recipient("+120255501${i.toString().padStart(2, '0')}", name)
 
     @Test fun phoneNormalizationAndInternationalNumbers() {
         listOf("600 000 000", "48 600 000 000", "0048 600 000 000", "+48 (600) 000-000")
@@ -35,19 +35,19 @@ class DraftRulesTest {
         assertTrue(batch.all().isEmpty())
     }
 
-    @Test fun deduplicatesCanonicalPhonesAndRejectsConflictingLinks() {
+    @Test fun deduplicatesCanonicalPhonesAndRejectsConflictingNames() {
         val batch = RecipientBatch()
         batch.replace(listOf(recipient(), Recipient("0012025550101", "Test Example")))
         assertEquals(1, batch.all().size)
         assertThrows(IllegalArgumentException::class.java) {
-            batch.replace(listOf(recipient(link = "https://doradca.pro/track/first"), recipient(link = "https://doradca.pro/track/second")))
+            batch.replace(listOf(recipient(name = "First"), recipient(name = "Second")))
         }
         assertEquals(1, batch.all().size)
     }
 
     @Test fun personalizesInOnePassAndRequiresEveryReferencedValue() {
-        assertEquals("Cześć Test Example https://doradca.pro/track/opaque-code",
-            Templates.render("Cześć {imię} {nazwisko} {link}", recipient(link = "https://doradca.pro/track/opaque-code")))
+        assertEquals("Cześć Test Example https://doradca.pro/edukacja/11111111-1111-4111-8111-111111111111/ikze",
+            Templates.render("Cześć {imię} {nazwisko} {link}", recipient(), "https://doradca.pro/edukacja/11111111-1111-4111-8111-111111111111/ikze"))
         listOf("Zapraszam {link}", "Witaj {unknown}", "Witaj {imie", "", "x".repeat(4001)).forEach {
             assertThrows(IllegalArgumentException::class.java) { Templates.render(it, recipient()) }
         }
@@ -57,11 +57,11 @@ class DraftRulesTest {
     }
 
     @Test fun httpsPolicyRejectsForeignHostsPortsCredentialsQueryAndEncoding() {
-        assertEquals("doradca.pro", DoradcaUrls.validate("https://doradca.pro/track/opaque-123").host)
+        assertEquals("doradca.pro", DoradcaUrls.validate("https://doradca.pro/edukacja/11111111-1111-4111-8111-111111111111/ikze").host)
         listOf("http://doradca.pro/x", "https://doradca.pro.evil.test/x", "https://evil.test/x",
             "https://doradca.pro@evil.test/x", "https://user:secret@doradca.pro/x", "https://doradca.pro:444/x",
             "https://doradca.pro/x?phone=example", "https://doradca.pro/x#token", "https://doradca.pro/%2e%2e/x",
-            "https://doradca.pro/../x", "https://doradca.pro./x", "https://127.0.0.1/x", "https://doradca.pro/x\\y").forEach {
+            "https://doradca.pro/../x", "https://doradca.pro./x", "https://127.0.0.1/x", "https://doradca.pro/x\\y", "https://doradca.pro/c/opaque", "https://doradca.pro/track/person").forEach {
             assertThrows(IllegalArgumentException::class.java) { DoradcaUrls.validate(it) }
         }
     }

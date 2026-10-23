@@ -1,46 +1,29 @@
-# SMS Samsung — szkice SMS, beta 0.5.0
+# SMS Samsung — Relationship Engine 0.6.0
 
-Android 8+ (min SDK 26), compile SDK 36 / target SDK 35. Docelowy telefon: Samsung Galaxy S24 Ultra / Android 16. **Wersja testowa, integracja backendowa oczekuje na wdrożenie.**
+Android 8+ (min26), target35, compile36. Wersja testowa dostosowana do specyfikacji Compliance & Security 1.0 z 23.10.2026. [Audyt przed zmianami](docs/COMPLIANCE_AUDIT_2026-10-23.md) opisuje rozbieżności i zastąpienie projektu poczekalni.
 
-Doradca.pro jest jedynym CRM: odpowiada za klientów, produkty OVB, segmenty, zgody, wykluczenia kontaktu, powtórzenia, rezerwacje i analitykę. Telefon przechowuje tylko roboczą paczkę w pamięci sesji. Nie ma integracji Bitrix.
+- Kontakty i prywatne szkice pozostają w RAM telefonu. Brak synchronizacji, trwałej bazy klientów, logowania treści i danych kontaktów, SDK analitycznych oraz integracji AI. Brak READ_CONTACTS: systemowy picker udostępnia jeden wskazany numer. Lokalny CSV pozostaje opcją; import nie przenosi zgód. Max30 to ograniczenie interfejsu.
+- Trzy jawne cele: prywatny, wcześniej zamówiony materiał, marketing. **Marketing zablokowany** do czasu rzeczywistej weryfikacji uprzedniej zgody właściwego administratora, celu i kanału SMS. Oświadczenie doradcy ani ręczna wysyłka nie są taką weryfikacją.
+- Brak domyślnych pretekstów i szablonów marketingowych. Materiał wybiera się w granicach wcześniejszej prośby. Aplikacja nie klasyfikuje automatycznie prawnego charakteru wpisanego tekstu.
+- Użytkownik osobno wybiera odbiorcę, czyta numer i pełną treść, potwierdza kontekst, otwiera `ACTION_SENDTO smsto:`. Brak kolejki, automatycznego przechodzenia, ponagleń, SMS w tle, uprawnień do wysyłania/czytania SMS. Otwarcie edytora nie potwierdza wysłania, doręczenia ani odczytu.
+- Jedyna komunikacja sieciowa to GET `https://doradca.pro/api/relationship/catalog/{public_profile_uuid}`. Bez odbiorcy, treści, tokenu doradcy, parametrów query, przekierowań lub cookies zarządzanych przez aplikację. Katalog wymaga wdrożenia nowego modułu na backendzie; niedostępność nie uruchamia zastępczych linków.
+- Publiczny link `https://doradca.pro/edukacja/{public_profile_uuid}/{material}` jest wspólny dla odbiorców i identyfikuje tylko doradcę oraz materiał. Dawne `/c/{recipient_token}` i POST kontaktów usunięto we wszystkich wariantach.
+- FLAG_SECURE, brak backupu, stan roboczy poza Bundle/SavedState, brak uczenia klawiatury/autofill. Obrót zachowuje RAM; zamknięcie Activity, śmierć procesu i „Wyczyść sesję” kończą szkice. Stara lokalna historia agregatów jest usuwana przy uruchomieniu. Android, klawiatura, źródłowy CSV, operator i natywna aplikacja SMS mogą niezależnie przetwarzać dane.
 
-Nowy etap: [Ciepły Rynek — zakres, pilotaż API i blokery](docs/WARM_MARKET.md). Obejmuje szyfrowaną poczekalnię w nowym module backendu, proponowany kontrakt inicjalizacji oraz kolejkę indywidualnych szkiców. Produkcyjne połączenie i Landing Page pozostają niewdrożone.
+## Integracja i granice gotowości
 
-## Działanie
+Nowy moduł Relationship Engine jest w prywatnym repo Doradca.pro. Implementuje publiczny katalog, referencyjny anonimowy kalkulator, aktywne zgłoszenie konsultacji/współpracy/marketingu, odrębny checkbox marketingu, zaszyfrowane dane, historię i wycofanie zgód oraz ACL doradcy. Nie jest wdrożony ani połączony z rzeczywistymi kontami CRM. Kalkulator jest przykładem edukacyjnym; komplet branżowych materiałów wymaga przygotowania i zatwierdzenia. Brak fizycznego testu Samsunga.
 
-- Wybór osób lub grup z telefonu (opcjonalne READ_CONTACTS), import zatwierdzonego CSV UTF-8, maks. 30 unikalnych odbiorców na każdej ścieżce. Numery walidowane przez libphonenumber i normalizowane do E.164 (domyślny kraj PL).
-- CSV z przecinkiem/średnikiem, BOM, cytowanymi polami, podwojonymi cudzysłowami i wielowierszowymi dodatkowymi kolumnami. Błędy odrzucają całą paczkę; bez cichego pomijania klientów.
-- Edycja/dyktowanie, szablony hipoteczne/polisowe/IKZE, personalizacja `{imie}` / `{imię}`, `{nazwisko}`, `{link}`. Brak wymaganej wartości blokuje podgląd. Szablony startowe nie wymagają linku.
-- Podgląd **każdego** odbiorcy, numeru, treści i szacunkowej liczby segmentów GSM-7/Unicode. Koszt zależy od operatora.
-- Potwierdzenie sprawdzenia podstaw kontaktu w CRM. To oświadczenie użytkownika, **nie serwerowa weryfikacja zgód**.
-- Przycisk otwiera pojedynczy szkic przez `ACTION_SENDTO smsto:`. Wysłanie wymaga decyzji w aplikacji SMS. Status: „szkic” lub „edytor otwarty — wysłanie nieznane”. Brak SEND_SMS, odbioru wiadomości i potwierdzeń doręczenia.
-- Obrót ekranu zachowuje stan wyłącznie w ViewModel. Zakończenie Activity lub śmierć procesu kończy sesję; wznowienie kampanii w CRM wymaga osobnego endpointu. Przycisk „Wyczyść sesję” usuwa odbiorców, linki, treść i wyszukiwanie. Historia przechowuje tylko czas i liczbę odbiorców (do 30 wpisów), ma osobne czyszczenie.
+Nie wdrażać starych PR/artefaktów 0.4/0.5. Wcześniejsze dokumenty mają oznaczenie historyczne; nowa specyfikacja ma pierwszeństwo. Produkcja wymaga [odbioru i ustalenia ról](docs/RELEASE_ACCEPTANCE.md), rzeczywistej integracji, testu bezpieczeństwa i opinii prawnej.
 
-## Integracja — jawne ograniczenia
+## Budowanie i testowanie
 
-Historyczny GET z dowolnym adresem endpointu i tokenem został usunięty. W 0.5.0 przygotowano oddzielny pilot nowego POST, zgodnego z propozycją modułu Ciepły Rynek. Dostępne materiały nie potwierdzają jego wdrożenia w produkcyjnym Doradca.pro ani OAuth/parowania. Wariant release nie ma INTERNET. W debug 0.5.0 dostępny jest oddzielny pilot POST opisany w WARM_MARKET.md; token doradcy jest używany wyłącznie w RAM na czas żądania. Nie sprawdzono autoryzacji na działającym serwerze. Szczegóły: [audyt i blokery](docs/P0_AUDIT.md).
-
-Stary `smssamsung://compose?text=...` został usunięty z manifestu, aby nie przekazywać treści ani danych klientów w URL. Link z wygasającym opaque kodem kampanii wymaga rzeczywistego backendu i pozostaje wyłączony. Można użyć Android „Udostępnij” → SMS Samsung, sprawdzić tekst i potwierdzić import; odbiorców należy wybrać ponownie. Eksportowany launcher ignoruje obce extras. Nie ma automatycznego połączenia z rozmową ChatGPT.
-
-`{link}` działa tylko z indywidualnym linkiem dostarczonym przez przyszłą autoryzowaną integrację. Obecny CSV przyjmuje imię/nazwę i telefon, bez linków. Walidator przyszłych linków dopuszcza HTTPS na dokładnym hoście doradca.pro, port domyślny/443, bez userinfo, query, fragmentów i kodowania ścieżki. Sam walidator nie potwierdza ważności ani zgody na link. Kliknięcia, boty podglądu, rezerwacje i konwersje musi mierzyć Doradca.pro; zwykły SMS nie pozwala określić odczytu.
-
-## Prywatność
-
-Brak trwałej bazy klientów, zapisów treści/numerów/linków, tokenów, logowania PII i backupu aplikacji. Pola nie zapisują stanu do Bundle; autofill i spersonalizowane uczenie klawiatury są wyłączone. Ekrany i dialogi mają FLAG_SECURE. Systemowa klawiatura, usługa dyktowania, źródłowy CSV i aplikacja SMS mają własne zasady przechowywania danych; aplikacja nie usuwa tych danych. Weryfikacja aktualnych zgód i powtórzeń po stronie CRM pozostaje blokerem produkcyjnym.
-
-## Build i instalacja
-
-JDK 17, Android SDK 36; Gradle Wrapper 8.11.1 z SHA-256 dystrybucji:
+JDK17, SDK36, Gradle Wrapper8.11.1 ze sprawdzaną sumą dystrybucji:
 
 ```sh
-./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease
 ./gradlew :app:connectedDebugAndroidTest
+python3 scripts/check-apk-permissions.py --aapt "$ANDROID_HOME/build-tools/36.0.0/aapt" --debug app/build/outputs/apk/debug/app-debug.apk --release app/build/outputs/apk/release/app-release-unsigned.apk
 ```
 
-GitHub [Actions](https://github.com/DariuszHalczok/Sms-samsung/actions) uruchamia testy jednostkowe, lint, kompilację i testy instrumentalne na emulatorze API 36. Z udanego uruchomienia pobierz `sms-samsung-debug-apk`, rozpakuj i sprawdź SHA256SUMS. APK jest podpisany kluczem **debug**, którego podpis weryfikuje CI; nie jest to podpis produkcyjny ani stabilny klucz aktualizacji pomiędzy runnerami CI.
-
-```sh
-adb install -r app-debug.apk
-```
-
-Przy konflikcie podpisów poprzedniego debug APK potrzebna może być deinstalacja starej aplikacji (usuwa jej historię). Ręczna instalacja na Samsungu wymaga zezwolenia na instalację z wybranego źródła. Test urządzeniowy opisano w [planie walidacji](docs/VALIDATION.md). CI nie wysyła SMS-ów i nie uruchamia edytora SMS. Emulator nie zastępuje testu na fizycznym S24 Ultra.
+[GitHub Actions](https://github.com/DariuszHalczok/Sms-samsung/actions) publikuje `sms-samsung-debug-apk` z `SHA256SUMS` (14dni). Podpis debug jest testowy i może różnić się między runnerami. Rozpakuj, sprawdź `sha256sum -c SHA256SUMS`, zainstaluj `adb install -r app-debug.apk`. Konflikt podpisów może wymagać usunięcia starej wersji. Release APK pozostaje bez podpisu produkcyjnego. CI używa danych syntetycznych; nie wysyła SMS i nie uruchamia edytora SMS.

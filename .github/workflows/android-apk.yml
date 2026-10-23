@@ -31,7 +31,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Unit tests, lint and APKs (no SMS dispatch)
         run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease
-      - name: Verify pilot and release permissions
+      - name: Verify least permissions in both variants
         run: python3 scripts/check-apk-permissions.py --aapt "$ANDROID_HOME/build-tools/36.0.0/aapt" --debug app/build/outputs/apk/debug/app-debug.apk --release app/build/outputs/apk/release/app-release-unsigned.apk
       - name: Verify test APK signature and checksum
         run: |

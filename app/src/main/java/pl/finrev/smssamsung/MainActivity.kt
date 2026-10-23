@@ -1,12 +1,9 @@
 package pl.finrev.smssamsung
 
-import android.Manifest
 import android.app.AlertDialog
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
-import android.speech.RecognizerIntent
 import android.text.Editable
 import android.text.InputFilter
 import android.text.TextWatcher
@@ -20,322 +17,221 @@ import java.util.concurrent.Future
 
 class MainActivity : ComponentActivity() {
     private val session: DraftSession by viewModels()
-    private lateinit var warmUi: WarmMarketUi
-    private val history by lazy { DraftHistory(this) }
     private val executor = Executors.newSingleThreadExecutor()
     private var work: Future<*>? = null
+    private var operation = 0L
     private var dialog: AlertDialog? = null
     private lateinit var recipients: TextView
-    private lateinit var search: EditText
+    private lateinit var modeLabel: TextView
+    private lateinit var materialLabel: TextView
     private lateinit var message: EditText
-    private var operation = 0L
-    private val speechCode = 100
-    private val permissionCode = 101
+    private val pickerCode = 101
     private val importCode = 102
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // Remove aggregate history left by older versions; no replacement persistent store.
+        getSharedPreferences("draft_history", 0).edit().clear().apply()
         val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 24, 32, 24)
+            orientation = LinearLayout.VERTICAL; setPadding(32, 24, 32, 24)
             importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
         }
         fun button(label: String, viewId: Int? = null, action: () -> Unit) = Button(this).apply {
-            text = label
-            viewId?.let { id = it }
-            setOnClickListener { action() }
-            layout.addView(this)
+            text = label; viewId?.let { id = it }; setOnClickListener { action() }; layout.addView(this)
         }
-        layout.addView(TextView(this).apply { text = "SMS Samsung 0.5 — Ciepły Rynek"; textSize = 24f })
+        layout.addView(TextView(this).apply { text = "Relationship Engine 0.6"; textSize = 24f })
         layout.addView(TextView(this).apply {
-            text = "Doradca.pro pozostaje CRM. Paczka jest tylko w pamięci sesji. Każdy SMS zatwierdzasz w aplikacji SMS. Nie potwierdzamy wysłania ani doręczenia."
+            text = "Kontakty i szkice pozostają w pamięci telefonu. Ręczne otwarcie edytora nie potwierdza wysłania ani legalności kontaktu. System SMS, Android i operator mają własne zasady przetwarzania."
         })
-        search = EditText(this).apply {
-            id = R.id.search; hint = "Wyszukaj osoby lub grupę"; isSaveEnabled = false
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
-            filters = arrayOf(InputFilter.LengthFilter(100)); setText(session.search)
-            watch { session.search = it }
+        modeLabel = TextView(this).apply { id = R.id.mode; isSaveEnabled = false }
+        layout.addView(modeLabel)
+        button("Wybierz cel komunikacji", R.id.choose_mode) { chooseMode() }
+        button("Wybierz jeden kontakt w systemie", R.id.pick_contact) {
+            try { startActivityForResult(ContactPicker.intent(), pickerCode) }
+            catch (_: Exception) { toast("Brak systemowego selektora numerów telefonu") }
         }
-        layout.addView(search)
-        button("Znajdź kontakty / grupy") { ensureContactsAccess() }
-        button("Import CSV z Doradca.pro") { importCsv() }
-        recipients = TextView(this).apply { id = R.id.recipients; textSize = 16f; isSaveEnabled = false }
+        button("Import lokalnego CSV") {
+            try {
+                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
+                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/csv", "text/plain", "application/csv"))
+                }, importCode)
+            } catch (_: Exception) { toast("Nie można otworzyć pliku") }
+        }
+        recipients = TextView(this).apply { id = R.id.recipients; isSaveEnabled = false }
         layout.addView(recipients)
-        button("Wyczyść sesję", R.id.clear_session) { clearSession() }
-        if (BuildConfig.WARM_MARKET_ENABLED) button("Ciepły Rynek — pilotaż API", R.id.warm_market) {
-            if (session.warmQueue != null) warmUi.overview() else warmUi.initialize()
-        }
-        button("Doradca.pro — status integracji") {
-            show(AlertDialog.Builder(this).setTitle("Integracja oczekuje na backend")
-                .setMessage("Moduł Ciepły Rynek jest przygotowywany. Połączenie z produkcyjnym Doradca.pro, OAuth/parowanie i Landing Page wymagają wdrożenia. Pilotaż API w tej wersji testowej używa ręcznego tokenu tylko w RAM. Zwykły SMS nie daje informacji o odczytaniu.")
-                .setPositiveButton("OK", null))
-        }
+        materialLabel = TextView(this).apply { id = R.id.material; isSaveEnabled = false }
+        layout.addView(materialLabel)
+        button("Pobierz katalog zamówionych materiałów", R.id.catalog) { chooseCatalog() }
         message = EditText(this).apply {
-            id = R.id.message; hint = "Treść SMS: {imie}, {nazwisko}, opcjonalnie {link}"; minLines = 4
+            id = R.id.message; hint = "Treść SMS; opcjonalnie {imie}, {nazwisko}, {link}"; minLines = 4
             isSaveEnabled = false
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
                 android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
             filters = arrayOf(InputFilter.LengthFilter(MAX_MESSAGE)); setText(session.body)
-            watch { session.body = it; session.changed() }
+            addTextChangedListener(object : TextWatcher {
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                    session.body = s.toString(); session.changed()
+                }
+                override fun afterTextChanged(s: Editable?) = Unit
+            })
         }
         layout.addView(message)
-        button("Szablony: hipoteka / polisa / IKZE") { chooseTemplate() }
-        button("Historia przygotowanych paczek") {
-            show(AlertDialog.Builder(this).setTitle("Historia szkiców — nie wysyłki")
-                .setMessage(history.display()).setPositiveButton("Zamknij", null)
-                .setNeutralButton("Wyczyść historię") { _, _ -> history.clear() })
+        button("Wybierz odbiorcę i sprawdź szkic", R.id.preview) { chooseRecipient() }
+        button("Wyczyść sesję", R.id.clear_session) { clearSession() }
+        button("Stan integracji Doradca.pro") {
+            show(AlertDialog.Builder(this).setTitle("Integracja produkcyjna oczekuje")
+                .setMessage("Katalog wymaga wdrożenia nowego API i publicznego profilu. Nie zastępuj go dawnymi linkami /c/. Marketing jest zablokowany bez weryfikacji uprzedniej zgody. Aplikacja nie wysyła danych kontaktów ani treści do API lub modeli AI.")
+                .setPositiveButton("OK", null))
         }
-        button("Dyktuj wiadomość") {
-            if (session.warmQueue != null) { toast("Edytuj treść osobno w kolejce Ciepłego Rynku"); return@button }
-            try {
-                startActivityForResult(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, "pl-PL")
-                }, speechCode)
-            } catch (_: Exception) { toast("Brak usługi rozpoznawania mowy") }
-        }
-        button("Sprawdź odbiorców i szkice", R.id.preview) { preview() }
         setContentView(ScrollView(this).apply {
             isSaveEnabled = false; addView(layout)
             setOnApplyWindowInsetsListener { view, insets ->
                 view.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
-                    insets.systemWindowInsetRight, insets.systemWindowInsetBottom)
-                insets
+                    insets.systemWindowInsetRight, insets.systemWindowInsetBottom); insets
             }
         })
-        warmUi = WarmMarketUi(this, session, ::show, ::toast,
-            { read, done -> load(read) { done(it) } }, { campaign ->
-                session.batch.replace(campaign.recipients)
-                session.warmQueue = WarmQueue(campaign)
-                history.record(campaign.recipients.size)
-                message.setText(campaign.template)
-                session.changed(); renderRecipients()
-            })
-        // Exported launcher deliberately ignores extras. Only our in-app share entry forwards text.
-        acceptInternalDraft()
-        renderRecipients()
+        acceptInternalDraft(); render()
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        acceptInternalDraft()
-    }
-
+    override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); acceptInternalDraft() }
     private fun acceptInternalDraft() {
         val body = SharedDraft.take() ?: return
-        clearSession()
-        message.setText(body)
+        clearSession(); message.setText(body) // Shared text never supplies recipients or a communication mode.
     }
-
-    private fun EditText.watch(update: (String) -> Unit) {
-        addTextChangedListener(object : TextWatcher {
-            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) { update(s.toString()) }
-            override fun afterTextChanged(s: Editable?) = Unit
-        })
-    }
-
     private fun show(builder: AlertDialog.Builder): AlertDialog? {
         dialog?.dismiss()
         if (isFinishing || isDestroyed) return null
-        dialog = builder.create().also { it.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE); it.show() }
-        return dialog
+        return builder.create().also {
+            dialog = it; it.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE); it.show()
+        }
     }
-
     private fun clearSession() {
-        operation++
-        work?.cancel(true)
-        session.clear()
-        search.text.clear(); message.text.clear()
-        SharedDraft.clear()
-        dialog?.dismiss(); dialog = null
-        renderRecipients()
+        operation++; work?.cancel(true); session.clear(); message.text.clear(); SharedDraft.clear()
+        dialog?.dismiss(); dialog = null; render()
     }
-
-    private fun importCsv() {
-        try {
-            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
-                putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/csv", "text/plain", "application/csv", "application/octet-stream"))
-            }, importCode)
-        } catch (_: Exception) { toast("Nie można otworzyć wyboru pliku") }
+    private fun render() {
+        val list = session.batch.all()
+        recipients.text = if (list.isEmpty()) "Odbiorcy: brak" else
+            "Wybrani lokalnie (${list.size}/30): " + list.joinToString(", ") { it.name.ifBlank { it.phone } }
+        modeLabel.text = "Cel: " + (session.mode?.label ?: "wybierz przed przygotowaniem SMS")
+        materialLabel.text = "Materiał: " + (session.material?.title ?: "brak")
     }
-
+    private fun chooseMode() {
+        show(AlertDialog.Builder(this).setTitle("Rzeczywisty cel komunikacji")
+            .setItems(CommunicationMode.entries.map { it.label }.toTypedArray()) { _, index ->
+                val chosen = CommunicationMode.entries[index]
+                if (chosen != session.mode) {
+                    session.mode = chosen; session.material = null; session.publicProfile = ""
+                    message.text.clear(); session.changed(); render()
+                }
+                if (chosen == CommunicationMode.MARKETING) toast("Brak zweryfikowanej uprzedniej zgody — marketing zablokowany")
+            })
+    }
+    private fun chooseCatalog() {
+        if (session.mode != CommunicationMode.REQUESTED) {
+            toast("Najpierw wybierz tryb Materiał zamówiony, zgodnie z wcześniejszą prośbą odbiorcy"); return
+        }
+        val profile = EditText(this).apply {
+            hint = "Publiczny UUID profilu Doradca.pro"; isSaveEnabled = false
+            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
+            filters = arrayOf(InputFilter.LengthFilter(36)); setText(session.publicProfile)
+        }
+        show(AlertDialog.Builder(this).setTitle("Publiczny katalog")
+            .setMessage("Żądanie zawiera tylko publiczny identyfikator doradcy. Nie wpisuj danych odbiorcy ani tokenu sesji.")
+            .setView(profile).setNegativeButton("Anuluj", null).setPositiveButton("Pobierz") { _, _ ->
+                val id = profile.text.toString(); profile.text.clear()
+                try { PublicProfile.validate(id) } catch (_: Exception) { toast("Niepoprawny identyfikator profilu"); return@setPositiveButton }
+                load({ MaterialCatalog().load(id) }) { materials ->
+                    show(AlertDialog.Builder(this).setTitle("Wybierz zamówiony materiał")
+                        .setItems(materials.map { it.title }.toTypedArray()) { _, index ->
+                            session.publicProfile = id; session.material = materials[index]; session.changed()
+                            message.setText("Zgodnie z Twoją prośbą przesyłam materiał: {link}"); render()
+                        })
+                }
+            })
+    }
     private fun <T> load(read: () -> T, done: (T) -> Unit) {
-        val revision = session.revision
-        val request = ++operation
+        val revision = session.revision; val request = ++operation
         work?.cancel(true)
         work = executor.submit {
             try {
                 val result = read()
-                runOnUiThread {
-                    if (!isDestroyed && !isFinishing && operation == request && session.revision == revision) done(result)
-                }
+                runOnUiThread { if (!isDestroyed && !isFinishing && operation == request && session.revision == revision) done(result) }
             } catch (_: Exception) {
-                runOnUiThread {
-                    if (!isDestroyed && !isFinishing && operation == request && session.revision == revision)
-                        toast("Nie wczytano danych. Sprawdź uprawnienia, format pliku, numery i limit 30 osób.")
-                }
+                runOnUiThread { if (!isDestroyed && !isFinishing && operation == request && session.revision == revision)
+                    toast("Nie wczytano danych. Katalog może wymagać wdrożenia; sprawdź format i dostępność.") }
             }
         }
     }
-
-    private fun importCsvData(uri: Uri) {
-        load({ contentResolver.openInputStream(uri)?.use { CsvImport.read(it) }
-            ?: throw IllegalArgumentException("Nie można odczytać pliku") }) { imported ->
-            show(AlertDialog.Builder(this).setTitle("Wczytano ${imported.size} odbiorców")
-                .setMessage("Zastąpić bieżącą paczkę? Zgody, cel i uprawnienia sprawdzisz w Doradca.pro przed przygotowaniem szkiców.")
-                .setNegativeButton("Anuluj", null).setPositiveButton("Załaduj") { _, _ -> updateRecipients(imported) })
-        }
-    }
-
-    private fun chooseTemplate() {
-        if (session.warmQueue != null) { warmUi.overview(); return }
-        val texts = arrayOf(
-            "Dzień dobry {imie}, zapraszam do przeglądu warunków kredytu hipotecznego. Czy możemy umówić krótką rozmowę?",
-            "Dzień dobry {imie}, proponuję przegląd aktualnej ochrony ubezpieczeniowej. Czy znajdziemy dogodny termin rozmowy?",
-            "Dzień dobry {imie}, możemy omówić możliwości oszczędzania na emeryturę i IKZE. Zapraszam do kontaktu."
-        )
-        show(AlertDialog.Builder(this).setTitle("Wybierz szablon")
-            .setItems(arrayOf("Hipoteka", "Polisa", "IKZE")) { _, i -> message.setText(texts[i]) })
-    }
-
-    private fun ensureContactsAccess() {
-        if (checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) chooseSearchType()
-        else requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), permissionCode)
-    }
-
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == permissionCode) {
-            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) chooseSearchType()
-            else toast("Dostęp do kontaktów nie został przyznany")
-        }
-    }
-
-    private fun chooseSearchType() {
-        show(AlertDialog.Builder(this).setTitle("Co wyszukać?")
-            .setItems(arrayOf("Osoby", "Grupy telefonu")) { _, i -> if (i == 0) choosePeople() else chooseGroups() })
-    }
-
-    private fun choosePeople() {
-        val query = search.text.toString().trim()
-        load({ ContactsSource(contentResolver).people(query) }) { items ->
-            if (items.isEmpty()) { toast("Nie znaleziono poprawnych kontaktów"); return@load }
-            val current = session.batch.all().associateBy { it.phone }
-            val marks = BooleanArray(items.size) { items[it].phone in current }
-            show(AlertDialog.Builder(this).setTitle("Wybierz odbiorców (maks. 30)")
-                .setMultiChoiceItems(items.map { "${it.name} — ${it.phone}" }.toTypedArray(), marks) { _, i, checked -> marks[i] = checked }
-                .setNegativeButton("Anuluj", null).setPositiveButton("Zatwierdź") { _, _ ->
-                    val visible = items.map { it.phone }.toSet()
-                    val candidate = current.values.filter { it.phone !in visible } +
-                        items.filterIndexed { i, _ -> marks[i] }.map { current[it.phone] ?: it }
-                    updateRecipients(candidate)
-                })
-        }
-    }
-
-    private fun chooseGroups() {
-        val query = search.text.toString().trim()
-        load({ ContactsSource(contentResolver).groups(query) }) { groups ->
-            if (groups.isEmpty()) { toast("Nie znaleziono grup"); return@load }
-            val marks = BooleanArray(groups.size)
-            show(AlertDialog.Builder(this).setTitle("Wybierz grupy (łącznie maks. 30 osób)")
-                .setMultiChoiceItems(groups.map { it.second }.toTypedArray(), marks) { _, i, checked -> marks[i] = checked }
-                .setNegativeButton("Anuluj", null).setPositiveButton("Dodaj") { _, _ ->
-                    val ids = groups.filterIndexed { i, _ -> marks[i] }.map { it.first }
-                    load({ ContactsSource(contentResolver).groupMembers(ids) }) { members ->
-                        val combined = session.batch.all().associateBy { it.phone }.toMutableMap()
-                        members.forEach { combined.putIfAbsent(it.phone, it) }
-                        updateRecipients(combined.values.toList())
-                    }
-                })
-        }
-    }
-
     private fun updateRecipients(candidate: List<Recipient>) {
-        try {
-            session.batch.replace(candidate.map { Recipient(it.phone, it.name) })
-            session.warmQueue = null
-            session.changed(); renderRecipients()
-        }
-        catch (_: IllegalArgumentException) { toast("Nie zmieniono paczki: niepoprawne dane, duplikaty lub więcej niż 30 odbiorców") }
+        try { session.batch.replace(candidate); session.changed(); render() }
+        catch (_: Exception) { toast("Nie zmieniono listy: sprawdź dane, duplikaty i limit 30") }
     }
-
-    private fun renderRecipients() {
+    private fun chooseRecipient() {
+        if (session.mode == null || session.mode == CommunicationMode.MARKETING) {
+            toast("Wybierz dopuszczalny cel. Marketing pozostaje zablokowany bez zweryfikowanej zgody."); return
+        }
         val list = session.batch.all()
-        message.isEnabled = session.warmQueue == null
-        recipients.text = if (list.isEmpty()) "Odbiorcy: brak" else
-            "Odbiorcy (${list.size}): " + list.joinToString(", ") { it.name.ifBlank { it.phone } }
+        if (list.isEmpty()) { toast("Wybierz kontakt"); return }
+        // A manual chooser, with no next-item state, queue, scheduler or automatic advance.
+        show(AlertDialog.Builder(this).setTitle("Samodzielnie wybierz jednego odbiorcę")
+            .setItems(list.map { "${it.name} — ${it.phone}" }.toTypedArray()) { _, i -> preview(list[i]) })
     }
-
-    private fun preview() {
-        if (session.warmQueue != null) { warmUi.overview(); return }
-        val clients = session.batch.all()
-        if (clients.isEmpty()) { toast("Najpierw wybierz odbiorców"); return }
-        val bodies = try { clients.map { Templates.render(session.body, it) } }
-        catch (e: IllegalArgumentException) { message.error = e.message; return }
-        val consent = CheckBox(this).apply {
-            text = "Sprawdziłem w Doradca.pro uprawnienia, cel, aktualną podstawę kontaktu, brak sprzeciwu i powtórzeń dla całej paczki."
+    private fun preview(recipient: Recipient) {
+        val mode = session.mode
+        val body = try {
+            Templates.render(session.body, recipient, session.material?.url(session.publicProfile).orEmpty())
+        } catch (e: IllegalArgumentException) { message.error = e.message; return }
+        val size = AndroidSmsSizing.calculate(body)
+        val confirmation = CheckBox(this).apply {
+            text = if (mode == CommunicationMode.REQUESTED)
+                "Ten odbiorca wcześniej poprosił o ten materiał; treść odpowiada zakresowi jego prośby."
+            else "Treść ma rzeczywisty cel prywatny. Nie używam tego trybu do maskowania marketingu."
+            isSaveEnabled = false
         }
-        val builder = AlertDialog.Builder(this).setTitle("Potwierdź ${clients.size} szkiców")
-            .setMessage("Telefon nie weryfikuje zgód ani kolizji w CRM. Każdego odbiorcę i treść zobaczysz przed otwarciem edytora SMS.")
-            .setView(consent).setNegativeButton("Anuluj", null).setPositiveButton("Przeglądaj", null)
-        show(builder)
-        val confirmation = dialog ?: return
-        confirmation.getButton(AlertDialog.BUTTON_POSITIVE).apply {
+        val review = show(AlertDialog.Builder(this).setTitle("Sprawdź jedną wiadomość")
+            .setMessage("${recipient.name}\n${recipient.phone}\n\n$body\n\n${size.encoding}, szac. ${size.segments} SMS. Koszt wg operatora.\nTo oświadczenie nie jest weryfikacją podstawy prawnej. Ręczny SMS ani bezpłatny materiał same w sobie jej nie zapewniają.")
+            .setView(confirmation).setNegativeButton("Anuluj", null).setPositiveButton("Otwórz edytor SMS", null)) ?: return
+        review.getButton(AlertDialog.BUTTON_POSITIVE).apply {
             isEnabled = false
-            consent.setOnCheckedChangeListener { _, checked -> isEnabled = checked }
+            confirmation.setOnCheckedChangeListener { _, checked -> isEnabled = checked }
             setOnClickListener {
-                if (!consent.isChecked) return@setOnClickListener
-                history.record(clients.size)
-                confirmation.dismiss()
-                review(clients, bodies, 0)
+                try {
+                    require(confirmation.isChecked)
+                    DraftPolicy.requireAllowed(mode, mode == CommunicationMode.REQUESTED && confirmation.isChecked, session.material)
+                    startActivity(SmsIntents.editor(recipient, body))
+                    review.dismiss() // No next recipient is selected or opened.
+                    toast("Edytor otwarty. Wysłanie i doręczenie nieznane.")
+                } catch (_: Exception) { toast("Nie otwarto edytora. Sprawdź cel, prośbę i dostępność aplikacji SMS.") }
             }
         }
     }
-
-    private fun review(clients: List<Recipient>, bodies: List<String>, index: Int) {
-        if (index >= clients.size) { toast("Koniec listy szkiców. Status wysłania nieznany."); return }
-        val client = clients[index]
-        val body = bodies[index]
-        val size = AndroidSmsSizing.calculate(body)
-        show(AlertDialog.Builder(this).setTitle("Szkic ${index + 1}/${clients.size}: ${client.name}")
-            .setMessage("${client.phone}\n\n$body\n\n${size.encoding}: ${size.units} jednostek, szac. ${size.segments} SMS. Koszt wg operatora.")
-            .setNegativeButton("Zakończ", null)
-            .setNeutralButton("Pomiń") { _, _ -> review(clients, bodies, index + 1) }
-            .setPositiveButton("Otwórz edytor") { _, _ ->
-                try {
-                    startActivity(SmsIntents.editor(client, body))
-                    show(AlertDialog.Builder(this).setTitle("Edytor otwarty — wysłanie nieznane")
-                        .setMessage("Po powrocie możesz przejrzeć kolejny szkic. Aplikacja nie potwierdza wysłania ani doręczenia.")
-                        .setPositiveButton("Następny") { _, _ -> review(clients, bodies, index + 1) }
-                        .setNegativeButton("Zakończ", null))
-                } catch (_: Exception) { toast("Nie można otworzyć aplikacji SMS") }
-            })
-    }
-
     @Deprecated("Platform activity result bridge")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (resultCode != RESULT_OK) return
-        if (requestCode == importCode) data?.data?.let { importCsvData(it) }
-        if (requestCode == speechCode) {
-            val dictated = data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull().orEmpty()
-            val combined = listOf(session.body.trim(), dictated).filter { it.isNotBlank() }.joinToString(" ")
-            if (combined.length > MAX_MESSAGE) toast("Dyktowanie przekracza limit 4000 znaków")
-            else message.setText(combined)
+        val uri: Uri = data?.data ?: return
+        if (requestCode == pickerCode) {
+            load({ ContactPicker.read(contentResolver, uri) }) { recipient ->
+                updateRecipients(session.batch.all() + recipient)
+            }
+        }
+        if (requestCode == importCode) {
+            load({ contentResolver.openInputStream(uri)?.use { CsvImport.read(it) } ?: error("unavailable") }) { imported ->
+                show(AlertDialog.Builder(this).setTitle("Import lokalny: ${imported.size} kontaktów")
+                    .setMessage("Zastąpić lokalną listę? Import nie przenosi zgód i nie wysyła danych na serwer. Limit 30 jest ograniczeniem interfejsu, nie podstawą kontaktu.")
+                    .setNegativeButton("Anuluj", null).setPositiveButton("Zastąp") { _, _ -> updateRecipients(imported) })
+            }
         }
     }
-
     override fun onDestroy() {
-        operation++
-        dialog?.dismiss(); dialog = null
-        work?.cancel(true); executor.shutdownNow()
-        super.onDestroy()
+        operation++; dialog?.dismiss(); dialog = null; work?.cancel(true); executor.shutdownNow(); super.onDestroy()
     }
-    private fun toast(body: String) = Toast.makeText(this, body, Toast.LENGTH_LONG).show()
+    private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
 }
