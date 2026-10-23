@@ -11,12 +11,20 @@ import android.provider.ContactsContract
 import android.speech.RecognizerIntent
 import android.widget.*
 import java.util.Locale
+import android.os.StrictMode
+import org.json.JSONObject
+import java.net.URL
+import java.net.HttpURLConnection
+import java.util.concurrent.Executors
 
 class MainActivity : Activity() {
     private lateinit var recipients: TextView
     private lateinit var search: EditText
     private lateinit var message: EditText
     private val selected = linkedMapOf<String, String>()
+    private val links = linkedMapOf<String, String>()
+    private val executor = Executors.newSingleThreadExecutor()
+    private val prefs by lazy { getSharedPreferences("draft_history", MODE_PRIVATE) }
     private val speechCode = 100
     private val importCode = 102
     private val permissionCode = 101
@@ -40,7 +48,8 @@ class MainActivity : Activity() {
         button("Importuj listę klientów z Doradca.pro (CSV)") { importCsv() }
         recipients = TextView(this).apply { text = "Odbiorcy: brak"; textSize = 16f }
         layout.addView(recipients)
-        button("Wyczyść odbiorców") { selected.clear(); renderRecipients() }
+        button("Wyczyść odbiorców") { selected.clear(); links.clear(); renderRecipients() }
+        button("Pobierz paczkę z API Doradca.pro") { showApiDialog() }
         message = EditText(this).apply {
             hint = "Treść SMS lub wklej tekst przygotowany w ChatGPT"
             minLines = 4
@@ -49,6 +58,8 @@ class MainActivity : Activity() {
                 android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
         }
         layout.addView(message)
+        button("Szablony: hipoteki / polisy / IKZE") { chooseTemplate() }
+        button("Historia przygotowanych paczek") { showHistory() }
         button("Dyktuj wiadomość") {
             try {
                 startActivityForResult(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -135,6 +146,7 @@ class MainActivity : Activity() {
                 .setNegativeButton("Anuluj", null)
                 .setPositiveButton("Załaduj listę") { _, _ ->
                     selected.clear()
+                    links.clear()
                     selected.putAll(imported)
                     renderRecipients()
                 }.show()
@@ -142,6 +154,121 @@ class MainActivity : Activity() {
             AlertDialog.Builder(this).setTitle("Błąd importu")
                 .setMessage(e.message ?: "Nieprawidłowy plik CSV")
                 .setPositiveButton("OK", null).show()
+        }
+    }
+
+    private fun chooseTemplate() {
+        val templates = arrayOf("Hipoteka", "Polisa", "IKZE")
+        val texts = arrayOf(
+            "Dzień dobry {imie}, zapraszam do przeglądu warunków kredytu hipotecznego. Możemy umówić krótką rozmowę. {link}",
+            "Dzień dobry {imie}, proponuję przegląd aktualnej ochrony ubezpieczeniowej. Czy znajdziemy dogodny termin rozmowy? {link}",
+            "Dzień dobry {imie}, możemy omówić możliwości oszczędzania na emeryturę i IKZE. Zapraszam do kontaktu. {link}"
+        )
+        AlertDialog.Builder(this).setTitle("Wybierz szablon")
+            .setItems(templates) { _, i -> message.setText(texts[i]) }.show()
+    }
+
+    private fun personalized(body: String, phone: String, name: String): String {
+        val firstName = name.trim().substringBefore(" ").take(60)
+        val link = links[phone].orEmpty()
+        return body.replace("{imie}", firstName).replace("{imię}", firstName)
+            .replace("{nazwisko}", name.trim().substringAfter(" ", ""))
+            .replace("{link}", link).trim()
+    }
+
+    private fun recordDraft(size: Int) {
+        // Intentionally do not persist names, numbers, texts or click URLs.
+        val history = org.json.JSONArray(prefs.getString("items", "[]"))
+        val row = JSONObject().put("timestamp", System.currentTimeMillis()).put("recipients", size)
+        history.put(row)
+        val trimmed = org.json.JSONArray()
+        for (i in maxOf(0, history.length() - 30) until history.length()) trimmed.put(history.get(i))
+        prefs.edit().putString("items", trimmed.toString()).apply()
+    }
+
+    private fun showHistory() {
+        val rows = org.json.JSONArray(prefs.getString("items", "[]"))
+        val lines = (rows.length() - 1 downTo maxOf(0, rows.length() - 20)).map { i ->
+            val item = rows.getJSONObject(i)
+            val date = java.text.SimpleDateFormat("dd.MM.yyyy HH:mm", Locale("pl", "PL"))
+                .format(java.util.Date(item.getLong("timestamp")))
+            "$date — ${item.getInt("recipients")} odbiorców (szkic)"
+        }
+        AlertDialog.Builder(this).setTitle("Historia przygotowanych paczek")
+            .setMessage(lines.joinToString("\n").ifEmpty { "Brak historii" })
+            .setNeutralButton("Wyczyść historię") { _, _ -> prefs.edit().remove("items").apply() }
+            .setPositiveButton("Zamknij", null).show()
+    }
+
+    private fun showApiDialog() {
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 16, 32, 4)
+        }
+        val endpoint = EditText(this).apply { hint = "https://doradca.pro/.../campaigns/ID"; inputType = android.text.InputType.TYPE_TEXT_VARIATION_URI }
+        val token = EditText(this).apply { hint = "Token dostępu (tylko w tej sesji)"; inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD }
+        layout.addView(endpoint); layout.addView(token)
+        AlertDialog.Builder(this).setTitle("API Doradca.pro — pobierz paczkę")
+            .setMessage("Wprowadź zatwierdzony adres endpointu HTTPS i token. Aplikacja nie zapisuje tokenu ani nie wysyła SMS-ów.")
+            .setView(layout).setNegativeButton("Anuluj", null)
+            .setPositiveButton("Pobierz") { _, _ ->
+                val url = endpoint.text.toString().trim()
+                val auth = token.text.toString()
+                token.text.clear()
+                if (!url.startsWith("https://") || Uri.parse(url).host != "doradca.pro" || auth.isBlank()) {
+                    toast("Wymagany HTTPS na doradca.pro i token")
+                } else fetchCampaign(url, auth)
+            }.show()
+    }
+
+    private fun fetchCampaign(endpoint: String, token: String) {
+        executor.execute {
+            try {
+                val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"; connectTimeout = 10000; readTimeout = 10000
+                    instanceFollowRedirects = false
+                    setRequestProperty("Authorization", "Bearer $token")
+                    setRequestProperty("Accept", "application/json")
+                }
+                try {
+                    if (connection.responseCode != 200) throw IllegalArgumentException("Odpowiedź HTTP ${connection.responseCode}")
+                    val bytes = connection.inputStream.use { it.readBytes() }
+                    if (bytes.size > 131072) throw IllegalArgumentException("Paczka przekracza 128 KB")
+                    val root = JSONObject(bytes.toString(Charsets.UTF_8))
+                    val list = root.getJSONArray("recipients")
+                    if (list.length() !in 1..30) throw IllegalArgumentException("Paczka musi mieć od 1 do 30 odbiorców")
+                    val found = linkedMapOf<String, String>()
+                    val clickLinks = linkedMapOf<String, String>()
+                    for (i in 0 until list.length()) {
+                        val client = list.getJSONObject(i)
+                        val phone = normalizePhone(client.getString("phone"))
+                        if (!phone.matches(Regex("\\+[0-9]{9,15}"))) throw IllegalArgumentException("Niepoprawny numer telefonu")
+                        found[phone] = client.optString("name", phone).take(100)
+                        val click = client.optString("click_url")
+                        if (click.isNotBlank()) {
+                            val uri = Uri.parse(click)
+                            if (uri.scheme != "https" || uri.host.isNullOrBlank() || uri.userInfo != null)
+                                throw IllegalArgumentException("Niepoprawny link kliknięć")
+                            clickLinks[phone] = click
+                        }
+                    }
+                    val draft = root.optString("message_template", "").take(4000)
+                    runOnUiThread {
+                        AlertDialog.Builder(this).setTitle("Dane z Doradca.pro")
+                            .setMessage("Pobrano ${found.size} odbiorców. Załadować paczkę do edytora? Przed wysyłką sprawdzisz każdą wiadomość.")
+                            .setNegativeButton("Anuluj", null)
+                            .setPositiveButton("Załaduj") { _, _ ->
+                                selected.clear(); selected.putAll(found)
+                                links.clear(); links.putAll(clickLinks)
+                                if (draft.isNotBlank()) message.setText(draft)
+                                renderRecipients()
+                            }.show()
+                    }
+                } finally { connection.disconnect() }
+            } catch (e: Exception) {
+                runOnUiThread { AlertDialog.Builder(this).setTitle("API niedostępne")
+                    .setMessage(e.message ?: "Błąd połączenia").setPositiveButton("OK", null).show() }
+            }
         }
     }
 
@@ -272,34 +399,39 @@ class MainActivity : Activity() {
     }
 
     private fun preview() {
-        val body = message.text.toString().trim()
+        val template = message.text.toString().trim()
         if (selected.isEmpty()) { toast("Najpierw wybierz odbiorców"); return }
-        if (body.isEmpty()) { message.error = "Podyktuj albo wpisz wiadomość"; return }
-        val pairs = selected.entries.toList()
-        AlertDialog.Builder(this).setTitle("Potwierdź przygotowanie ${pairs.size} SMS")
-            .setMessage("Do: ${pairs.joinToString { it.value }.take(1100)}\n\nTreść:\n$body\n\nŻadna wiadomość nie zostanie wysłana automatycznie. Każdą zatwierdzasz osobno w aplikacji SMS.")
+        if (template.isEmpty()) { message.error = "Podyktuj albo wpisz wiadomość"; return }
+        if (selected.size > 30) { toast("Maksymalnie 30 odbiorców na paczkę"); return }
+        val pairs = selected.entries.map { Triple(it.key, it.value, personalized(template, it.key, it.value)) }
+        if (pairs.any { it.third.contains("{link}") || it.third.length > 4000 }) {
+            toast("Brakuje linku dla odbiorcy lub wiadomość jest za długa"); return
+        }
+        val overview = pairs.take(4).joinToString("\n\n") { (phone, name, body) -> "$name ($phone):\n$body" }
+        AlertDialog.Builder(this).setTitle("Sprawdź ${pairs.size} szkiców SMS")
+            .setMessage("$overview\n\nKażdy SMS wymaga osobnego zatwierdzenia w systemowej aplikacji.")
             .setNegativeButton("Anuluj", null)
-            .setPositiveButton("Otwórz pierwszy SMS") { _, _ -> openSms(pairs, body, 0) }
-            .show()
+            .setPositiveButton("Przygotuj") { _, _ ->
+                recordDraft(pairs.size)
+                openSms(pairs, 0)
+            }.show()
     }
 
-    private fun openSms(pairs: List<Map.Entry<String, String>>, body: String, index: Int) {
+    private fun openSms(pairs: List<Triple<String, String, String>>, index: Int) {
         if (index >= pairs.size) { toast("Lista zakończona"); return }
-        val (phone, name) = pairs[index]
+        val (phone, name, body) = pairs[index]
         AlertDialog.Builder(this).setTitle("SMS ${index + 1} z ${pairs.size}: $name")
             .setMessage("Numer: $phone\n\n$body")
             .setNegativeButton("Zakończ", null)
-            .setNeutralButton("Pomiń") { _, _ -> openSms(pairs, body, index + 1) }
+            .setNeutralButton("Pomiń") { _, _ -> openSms(pairs, index + 1) }
             .setPositiveButton("Otwórz edytor") { _, _ ->
                 try {
                     startActivity(Intent(Intent.ACTION_SENDTO,
-                        Uri.fromParts("smsto", phone.filter { it.isDigit() || it == '+' }, null)).apply {
-                        putExtra("sms_body", body)
-                    })
+                        Uri.fromParts("smsto", phone, null)).apply { putExtra("sms_body", body) })
                     if (index + 1 < pairs.size) {
-                        AlertDialog.Builder(this).setTitle("Następny odbiorca")
-                            .setMessage("Po powrocie z aplikacji SMS możesz przygotować następną wiadomość. Aplikacja nie wie, czy poprzedni SMS został wysłany.")
-                            .setPositiveButton("Następny") { _, _ -> openSms(pairs, body, index + 1) }
+                        AlertDialog.Builder(this).setTitle("Kolejny odbiorca")
+                            .setMessage("Po powrocie z aplikacji SMS możesz otworzyć kolejny szkic. Nie potwierdzamy wysłania ani doręczenia.")
+                            .setPositiveButton("Następny") { _, _ -> openSms(pairs, index + 1) }
                             .setNegativeButton("Zakończ", null).show()
                     }
                 } catch (_: Exception) { toast("Nie znaleziono aplikacji SMS") }
