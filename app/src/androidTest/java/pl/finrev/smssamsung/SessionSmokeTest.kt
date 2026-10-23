@@ -51,7 +51,7 @@ class SessionSmokeTest {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
                 activity.findViewById<EditText>(R.id.message).setText("Test {imie}")
-                ViewModelProvider(activity)[DraftSession::class.java].batch.replace(listOf(Recipient("+12025550101", "Test Example")))
+                ViewModelProvider(activity)[DraftSession::class.java].addPicked(Recipient("+12025550101", "Test Example"))
                 assertFalse(activity.findViewById<EditText>(R.id.message).isSaveEnabled)
                 assertTrue(activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0)
             }

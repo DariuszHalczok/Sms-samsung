@@ -47,6 +47,15 @@ jobs:
             app/build/outputs/apk/debug/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
+      - name: Upload product presentation and pilot drafts
+        uses: actions/upload-artifact@v4
+        with:
+          name: marketing-pilot-kit
+          path: |
+            marketing/
+            docs/RELEASE_ACCEPTANCE.md
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload validation reports
         if: always()
         uses: actions/upload-artifact@v4

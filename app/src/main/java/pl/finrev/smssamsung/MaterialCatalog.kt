@@ -22,7 +22,7 @@ class HttpsCatalogTransport(
                 connectTimeout = 10000; readTimeout = 10000
                 setRequestProperty("Accept", "application/json")
                 setRequestProperty("Cache-Control", "no-store")
-                setRequestProperty("User-Agent", "SMS-Samsung-Catalog/0.6")
+                setRequestProperty("User-Agent", "SMS-Samsung-Catalog/0.7")
             }
             require(connection.responseCode == 200) { "Katalog niedostępny" }
             require(connection.contentType.orEmpty().substringBefore(';').trim().equals("application/json", true))

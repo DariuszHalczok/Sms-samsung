@@ -8,4 +8,5 @@
     <item name="choose_mode" type="id" />
     <item name="pick_contact" type="id" />
     <item name="material" type="id" />
+    <item name="profile_input" type="id" />
 </resources>

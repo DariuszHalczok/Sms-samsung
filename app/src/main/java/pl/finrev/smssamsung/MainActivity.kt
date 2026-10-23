@@ -8,230 +8,278 @@ import android.text.Editable
 import android.text.InputFilter
 import android.text.TextWatcher
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.*
 import androidx.activity.ComponentActivity
 import androidx.activity.viewModels
+import androidx.activity.result.contract.ActivityResultContracts
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
 class MainActivity : ComponentActivity() {
     private val session: DraftSession by viewModels()
+    private val profileStore by lazy { AdvisorProfileStore(this) }
     private val executor = Executors.newSingleThreadExecutor()
     private var work: Future<*>? = null
     private var operation = 0L
+    private var busy = false
     private var dialog: AlertDialog? = null
-    private lateinit var recipients: TextView
-    private lateinit var modeLabel: TextView
-    private lateinit var materialLabel: TextView
     private lateinit var message: EditText
-    private val pickerCode = 101
-    private val importCode = 102
+    private val contactPicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK) result.data?.data?.let(::readPickedContact)
+    }
+    private val csvPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let(::readCsv)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        // Remove aggregate history left by older versions; no replacement persistent store.
         getSharedPreferences("draft_history", 0).edit().clear().apply()
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL; setPadding(32, 24, 32, 24)
-            importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+        setContentView(R.layout.activity_main)
+        // Disable saving the entire view tree, including dynamic recipient labels.
+        fun transient(view: View) {
+            view.isSaveEnabled = false
+            if (view is ViewGroup) for (i in 0 until view.childCount) transient(view.getChildAt(i))
         }
-        fun button(label: String, viewId: Int? = null, action: () -> Unit) = Button(this).apply {
-            text = label; viewId?.let { id = it }; setOnClickListener { action() }; layout.addView(this)
+        transient(findViewById(R.id.composer_scroll))
+        findViewById<ScrollView>(R.id.composer_scroll).setOnApplyWindowInsetsListener { view, insets ->
+            view.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
+                insets.systemWindowInsetRight, insets.systemWindowInsetBottom); insets
         }
-        layout.addView(TextView(this).apply { text = "Relationship Engine 0.6"; textSize = 24f })
-        layout.addView(TextView(this).apply {
-            text = "Kontakty i szkice pozostają w pamięci telefonu. Ręczne otwarcie edytora nie potwierdza wysłania ani legalności kontaktu. System SMS, Android i operator mają własne zasady przetwarzania."
-        })
-        modeLabel = TextView(this).apply { id = R.id.mode; isSaveEnabled = false }
-        layout.addView(modeLabel)
-        button("Wybierz cel komunikacji", R.id.choose_mode) { chooseMode() }
-        button("Wybierz jeden kontakt w systemie", R.id.pick_contact) {
-            try { startActivityForResult(ContactPicker.intent(), pickerCode) }
-            catch (_: Exception) { toast("Brak systemowego selektora numerów telefonu") }
-        }
-        button("Import lokalnego CSV") {
-            try {
-                startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
-                    addCategory(Intent.CATEGORY_OPENABLE); type = "*/*"
-                    putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("text/csv", "text/plain", "application/csv"))
-                }, importCode)
-            } catch (_: Exception) { toast("Nie można otworzyć pliku") }
-        }
-        recipients = TextView(this).apply { id = R.id.recipients; isSaveEnabled = false }
-        layout.addView(recipients)
-        materialLabel = TextView(this).apply { id = R.id.material; isSaveEnabled = false }
-        layout.addView(materialLabel)
-        button("Pobierz katalog zamówionych materiałów", R.id.catalog) { chooseCatalog() }
-        message = EditText(this).apply {
-            id = R.id.message; hint = "Treść SMS; opcjonalnie {imie}, {nazwisko}, {link}"; minLines = 4
-            isSaveEnabled = false
-            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-                android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-            imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
-            filters = arrayOf(InputFilter.LengthFilter(MAX_MESSAGE)); setText(session.body)
-            addTextChangedListener(object : TextWatcher {
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
-                    session.body = s.toString(); session.changed()
-                }
-                override fun afterTextChanged(s: Editable?) = Unit
-            })
-        }
-        layout.addView(message)
-        button("Wybierz odbiorcę i sprawdź szkic", R.id.preview) { chooseRecipient() }
-        button("Wyczyść sesję", R.id.clear_session) { clearSession() }
-        button("Stan integracji Doradca.pro") {
-            show(AlertDialog.Builder(this).setTitle("Integracja produkcyjna oczekuje")
-                .setMessage("Katalog wymaga wdrożenia nowego API i publicznego profilu. Nie zastępuj go dawnymi linkami /c/. Marketing jest zablokowany bez weryfikacji uprzedniej zgody. Aplikacja nie wysyła danych kontaktów ani treści do API lub modeli AI.")
-                .setPositiveButton("OK", null))
-        }
-        setContentView(ScrollView(this).apply {
-            isSaveEnabled = false; addView(layout)
-            setOnApplyWindowInsetsListener { view, insets ->
-                view.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
-                    insets.systemWindowInsetRight, insets.systemWindowInsetBottom); insets
+        message = findViewById(R.id.message)
+        message.setText(session.body)
+        message.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                session.body = s.toString(); session.changed(); updateFeedback()
             }
+            override fun afterTextChanged(s: Editable?) = Unit
         })
-        acceptInternalDraft(); render()
+        action(R.id.choose_mode, ::chooseMode)
+        action(R.id.pick_contact, ::pickContact)
+        action(R.id.choose_recipient) { chooseRecipient(false) }
+        action(R.id.remove_recipient) { session.removeSelected(); render() }
+        action(R.id.catalog, ::chooseCatalog)
+        action(R.id.replies, ::chooseReply)
+        action(R.id.preview) { chooseRecipient(true) }
+        action(R.id.clear_session, ::clearSession)
+        action(R.id.more, ::more)
+        val version = packageManager.getPackageInfo(packageName, 0).versionName.orEmpty()
+        findViewById<TextView>(R.id.version_footer).text = getString(R.string.footer, version)
+        acceptInternalDraft(); render(); updateFeedback()
     }
 
+    private fun action(id: Int, action: () -> Unit) { findViewById<View>(id).setOnClickListener { action() } }
     override fun onNewIntent(intent: Intent) { super.onNewIntent(intent); acceptInternalDraft() }
     private fun acceptInternalDraft() {
         val body = SharedDraft.take() ?: return
-        clearSession(); message.setText(body) // Shared text never supplies recipients or a communication mode.
+        clearSession(); message.setText(body) // Shared text cannot supply recipients, a mode or a profile.
     }
     private fun show(builder: AlertDialog.Builder): AlertDialog? {
         dialog?.dismiss()
         if (isFinishing || isDestroyed) return null
-        return builder.create().also {
-            dialog = it; it.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE); it.show()
-        }
+        return builder.create().also { dialog = it; it.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE); it.show() }
     }
     private fun clearSession() {
         operation++; work?.cancel(true); session.clear(); message.text.clear(); SharedDraft.clear()
-        dialog?.dismiss(); dialog = null; render()
+        dialog?.dismiss(); dialog = null; busy = false
+        findViewById<View>(R.id.loading).visibility = View.GONE
+        findViewById<View>(R.id.load_status).visibility = View.GONE
+        render()
+    }
+    private fun updateFeedback() {
+        val size = AndroidSmsSizing.calculate(session.body)
+        findViewById<TextView>(R.id.message_feedback).text = getString(R.string.body_feedback, session.body.length, size.segments)
     }
     private fun render() {
-        val list = session.batch.all()
-        recipients.text = if (list.isEmpty()) "Odbiorcy: brak" else
-            "Wybrani lokalnie (${list.size}/30): " + list.joinToString(", ") { it.name.ifBlank { it.phone } }
-        modeLabel.text = "Cel: " + (session.mode?.label ?: "wybierz przed przygotowaniem SMS")
-        materialLabel.text = "Materiał: " + (session.material?.title ?: "brak")
+        val list = session.batch.all(); val selected = session.selected()
+        findViewById<TextView>(R.id.recipients).text = when {
+            selected != null -> getString(R.string.recipient_selected, selected.name.ifBlank { getString(R.string.contact_without_name) }, selected.phone)
+            list.isNotEmpty() -> getString(R.string.recipient_pending)
+            else -> getString(R.string.recipient_empty)
+        }
+        findViewById<TextView>(R.id.recipient_count).text = getString(R.string.recipient_count, list.size)
+        findViewById<View>(R.id.choose_recipient).isEnabled = list.isNotEmpty()
+        findViewById<View>(R.id.remove_recipient).visibility = if (selected == null) View.GONE else View.VISIBLE
+        findViewById<TextView>(R.id.mode).text = session.mode?.label ?: getString(R.string.mode_empty)
+        findViewById<TextView>(R.id.mode_hint).setText(when (session.mode) {
+            CommunicationMode.PRIVATE -> R.string.mode_private_hint
+            CommunicationMode.REQUESTED -> R.string.mode_requested_hint
+            CommunicationMode.MARKETING -> R.string.mode_marketing_hint
+            null -> R.string.mode_empty
+        })
+        findViewById<View>(R.id.material_section).visibility = if (session.mode == CommunicationMode.REQUESTED) View.VISIBLE else View.GONE
+        findViewById<TextView>(R.id.material).text = session.material?.title ?: getString(R.string.material_empty)
+        findViewById<TextView>(R.id.profile_status).setText(if (profileStore.load() == null) R.string.profile_missing else R.string.profile_configured)
+        findViewById<View>(R.id.catalog).isEnabled = !busy
+        findViewById<View>(R.id.replies).isEnabled = session.material != null
     }
     private fun chooseMode() {
-        show(AlertDialog.Builder(this).setTitle("Rzeczywisty cel komunikacji")
+        show(AlertDialog.Builder(this).setTitle(R.string.mode_dialog)
             .setItems(CommunicationMode.entries.map { it.label }.toTypedArray()) { _, index ->
                 val chosen = CommunicationMode.entries[index]
-                if (chosen != session.mode) {
-                    session.mode = chosen; session.material = null; session.publicProfile = ""
-                    message.text.clear(); session.changed(); render()
+                fun apply() {
+                    session.changeMode(chosen); message.setText(session.body); render()
+                    if (chosen == CommunicationMode.MARKETING) toast(R.string.mode_marketing_hint)
                 }
-                if (chosen == CommunicationMode.MARKETING) toast("Brak zweryfikowanej uprzedniej zgody — marketing zablokowany")
+                if (chosen != session.mode && (session.body.isNotBlank() || session.material != null)) {
+                    show(AlertDialog.Builder(this).setTitle(R.string.mode_change_title).setMessage(R.string.mode_change_body)
+                        .setNegativeButton(R.string.cancel, null).setPositiveButton(R.string.mode_change_confirm) { _, _ -> apply() })
+                } else apply()
             })
     }
-    private fun chooseCatalog() {
-        if (session.mode != CommunicationMode.REQUESTED) {
-            toast("Najpierw wybierz tryb Materiał zamówiony, zgodnie z wcześniejszą prośbą odbiorcy"); return
-        }
-        val profile = EditText(this).apply {
-            hint = "Publiczny UUID profilu Doradca.pro"; isSaveEnabled = false
+    private fun pickContact() {
+        try { contactPicker.launch(ContactPicker.intent()) }
+        catch (_: Exception) { toast(R.string.picker_missing) }
+    }
+    private fun more() {
+        val labels = intArrayOf(R.string.profile_title, R.string.import_csv, R.string.privacy_title)
+        show(AlertDialog.Builder(this).setTitle(R.string.more).setItems(labels.map { getString(it) }.toTypedArray()) { _, index ->
+            when (index) {
+                0 -> configureProfile(false)
+                1 -> importCsv()
+                2 -> show(AlertDialog.Builder(this).setTitle(R.string.privacy_title).setMessage(R.string.privacy_body).setPositiveButton(R.string.close, null))
+            }
+        })
+    }
+    private fun configureProfile(loadAfterSave: Boolean) {
+        val current = profileStore.load()
+        val field = EditText(this).apply {
+            id = R.id.profile_input; hint = getString(R.string.profile_hint); isSaveEnabled = false
             importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO
             inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
             imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
-            filters = arrayOf(InputFilter.LengthFilter(36)); setText(session.publicProfile)
+            filters = arrayOf(InputFilter.LengthFilter(36)); setText(current.orEmpty())
         }
-        show(AlertDialog.Builder(this).setTitle("Publiczny katalog")
-            .setMessage("Żądanie zawiera tylko publiczny identyfikator doradcy. Nie wpisuj danych odbiorcy ani tokenu sesji.")
-            .setView(profile).setNegativeButton("Anuluj", null).setPositiveButton("Pobierz") { _, _ ->
-                val id = profile.text.toString(); profile.text.clear()
-                try { PublicProfile.validate(id) } catch (_: Exception) { toast("Niepoprawny identyfikator profilu"); return@setPositiveButton }
-                load({ MaterialCatalog().load(id) }) { materials ->
-                    show(AlertDialog.Builder(this).setTitle("Wybierz zamówiony materiał")
-                        .setItems(materials.map { it.title }.toTypedArray()) { _, index ->
-                            session.publicProfile = id; session.material = materials[index]; session.changed()
-                            message.setText("Zgodnie z Twoją prośbą przesyłam materiał: {link}"); render()
-                        })
-                }
+        fun discardBoundMaterial() {
+            operation++; work?.cancel(true); busy = false
+            findViewById<View>(R.id.loading).visibility = View.GONE
+            findViewById<View>(R.id.load_status).visibility = View.GONE
+            if (session.material != null) message.text.clear()
+            session.clearMaterial(); render()
+        }
+        val builder = AlertDialog.Builder(this).setTitle(R.string.profile_title)
+            .setMessage(getString(R.string.profile_explanation) + "\n\n" + getString(R.string.profile_change_warning))
+            .setView(field).setNegativeButton(R.string.cancel, null)
+            .setPositiveButton(if (loadAfterSave) R.string.profile_save_load else R.string.profile_save, null)
+        if (current != null) builder.setNeutralButton(R.string.profile_remove) { _, _ ->
+            profileStore.clear(); field.text.clear(); discardBoundMaterial()
+        }
+        val confirmation = show(builder) ?: return
+        confirmation.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+            val id = field.text.toString().trim()
+            try { PublicProfile.validate(id) } catch (_: Exception) { field.error = getString(R.string.profile_invalid); return@setOnClickListener }
+            profileStore.save(id)
+            if (current != id) discardBoundMaterial()
+            field.text.clear(); confirmation.dismiss(); render()
+            if (loadAfterSave) chooseCatalog() else toast(R.string.profile_saved)
+        }
+    }
+    private fun chooseCatalog() {
+        if (session.mode != CommunicationMode.REQUESTED) { toast(R.string.catalog_requested_only); return }
+        val id = profileStore.load()
+        if (id == null) { configureProfile(true); return }
+        load({ MaterialCatalog().load(id) }, R.string.catalog_loading, R.string.catalog_unavailable) { materials ->
+            show(AlertDialog.Builder(this).setTitle(R.string.catalog_pick)
+                .setItems(materials.map { it.title }.toTypedArray()) { _, index ->
+                    session.publicProfile = id; session.material = materials[index]; session.changed()
+                    if (session.body.isBlank()) message.setText(RequestedReply.SIMPLE.forDraft(session.mode, session.material))
+                    render()
+                })
+        }
+    }
+    private fun chooseReply() {
+        if (session.mode != CommunicationMode.REQUESTED || session.material == null) { toast(R.string.replies_missing); return }
+        show(AlertDialog.Builder(this).setTitle(R.string.replies_title)
+            .setItems(RequestedReply.entries.map { getString(it.labelRes) }.toTypedArray()) { _, index ->
+                val text = RequestedReply.entries[index].forDraft(session.mode, session.material)
+                if (session.body.isBlank() || session.body == text) message.setText(text)
+                else show(AlertDialog.Builder(this).setTitle(R.string.replace_body_title).setMessage(R.string.replace_body_explanation)
+                    .setNegativeButton(R.string.cancel, null).setPositiveButton(R.string.replace_body) { _, _ -> message.setText(text) })
             })
     }
-    private fun <T> load(read: () -> T, done: (T) -> Unit) {
+    private fun <T> load(read: () -> T, loading: Int = R.string.data_loading, failure: Int = R.string.data_unavailable, done: (T) -> Unit) {
         val revision = session.revision; val request = ++operation
-        work?.cancel(true)
+        work?.cancel(true); busy = true; render()
+        findViewById<View>(R.id.loading).visibility = View.VISIBLE
+        findViewById<TextView>(R.id.load_status).apply { visibility = View.VISIBLE; setText(loading) }
         work = executor.submit {
-            try {
-                val result = read()
-                runOnUiThread { if (!isDestroyed && !isFinishing && operation == request && session.revision == revision) done(result) }
-            } catch (_: Exception) {
-                runOnUiThread { if (!isDestroyed && !isFinishing && operation == request && session.revision == revision)
-                    toast("Nie wczytano danych. Katalog może wymagać wdrożenia; sprawdź format i dostępność.") }
+            val result = runCatching { read() }
+            runOnUiThread {
+                if (isDestroyed || isFinishing || operation != request) return@runOnUiThread
+                busy = false; findViewById<View>(R.id.loading).visibility = View.GONE; render()
+                val status = findViewById<TextView>(R.id.load_status)
+                when {
+                    session.revision != revision -> status.setText(R.string.stale_result)
+                    result.isFailure -> status.setText(failure)
+                    else -> { status.visibility = View.GONE; done(result.getOrThrow()) }
+                }
             }
         }
     }
-    private fun updateRecipients(candidate: List<Recipient>) {
-        try { session.batch.replace(candidate); session.changed(); render() }
-        catch (_: Exception) { toast("Nie zmieniono listy: sprawdź dane, duplikaty i limit 30") }
-    }
-    private fun chooseRecipient() {
-        if (session.mode == null || session.mode == CommunicationMode.MARKETING) {
-            toast("Wybierz dopuszczalny cel. Marketing pozostaje zablokowany bez zweryfikowanej zgody."); return
+    private fun chooseRecipient(forPreview: Boolean) {
+        if (forPreview && (session.mode == null || session.mode == CommunicationMode.MARKETING)) {
+            toast(if (session.mode == null) R.string.mode_empty else R.string.mode_marketing_hint); return
         }
+        if (forPreview && session.body.isBlank()) { message.error = getString(R.string.body_required); return }
         val list = session.batch.all()
-        if (list.isEmpty()) { toast("Wybierz kontakt"); return }
-        // A manual chooser, with no next-item state, queue, scheduler or automatic advance.
-        show(AlertDialog.Builder(this).setTitle("Samodzielnie wybierz jednego odbiorcę")
-            .setItems(list.map { "${it.name} — ${it.phone}" }.toTypedArray()) { _, i -> preview(list[i]) })
+        if (list.isEmpty()) { toast(R.string.no_recipient); return }
+        if (forPreview) session.selected()?.let { preview(it); return }
+        // Explicit selection. No next-item state or automatic advance.
+        show(AlertDialog.Builder(this).setTitle(R.string.recipient_dialog)
+            .setItems(list.map { "${it.name} — ${it.phone}" }.toTypedArray()) { _, i ->
+                session.select(list[i].phone); render()
+                if (forPreview) preview(list[i])
+            })
     }
     private fun preview(recipient: Recipient) {
         val mode = session.mode
-        val body = try {
-            Templates.render(session.body, recipient, session.material?.url(session.publicProfile).orEmpty())
-        } catch (e: IllegalArgumentException) { message.error = e.message; return }
+        if (mode == CommunicationMode.REQUESTED && session.material == null) { toast(R.string.replies_missing); return }
+        val body = try { Templates.render(session.body, recipient, session.material?.url(session.publicProfile).orEmpty()) }
+        catch (e: IllegalArgumentException) { message.error = e.message; return }
+        val revision = session.revision
         val size = AndroidSmsSizing.calculate(body)
         val confirmation = CheckBox(this).apply {
-            text = if (mode == CommunicationMode.REQUESTED)
-                "Ten odbiorca wcześniej poprosił o ten materiał; treść odpowiada zakresowi jego prośby."
-            else "Treść ma rzeczywisty cel prywatny. Nie używam tego trybu do maskowania marketingu."
+            setText(if (mode == CommunicationMode.REQUESTED) R.string.confirm_requested else R.string.confirm_private)
             isSaveEnabled = false
         }
-        val review = show(AlertDialog.Builder(this).setTitle("Sprawdź jedną wiadomość")
-            .setMessage("${recipient.name}\n${recipient.phone}\n\n$body\n\n${size.encoding}, szac. ${size.segments} SMS. Koszt wg operatora.\nTo oświadczenie nie jest weryfikacją podstawy prawnej. Ręczny SMS ani bezpłatny materiał same w sobie jej nie zapewniają.")
-            .setView(confirmation).setNegativeButton("Anuluj", null).setPositiveButton("Otwórz edytor SMS", null)) ?: return
+        val review = show(AlertDialog.Builder(this).setTitle(R.string.review_title)
+            .setMessage(getString(R.string.review_body, recipient.name, recipient.phone, body, size.encoding, size.segments))
+            .setView(confirmation).setNegativeButton(R.string.cancel, null).setPositiveButton(R.string.open_editor, null)) ?: return
         review.getButton(AlertDialog.BUTTON_POSITIVE).apply {
             isEnabled = false
             confirmation.setOnCheckedChangeListener { _, checked -> isEnabled = checked }
             setOnClickListener {
                 try {
-                    require(confirmation.isChecked)
+                    require(confirmation.isChecked && revision == session.revision)
                     DraftPolicy.requireAllowed(mode, mode == CommunicationMode.REQUESTED && confirmation.isChecked, session.material)
                     startActivity(SmsIntents.editor(recipient, body))
-                    review.dismiss() // No next recipient is selected or opened.
-                    toast("Edytor otwarty. Wysłanie i doręczenie nieznane.")
-                } catch (_: Exception) { toast("Nie otwarto edytora. Sprawdź cel, prośbę i dostępność aplikacji SMS.") }
+                    review.dismiss(); toast(R.string.editor_opened)
+                } catch (_: Exception) { toast(R.string.editor_unavailable) }
             }
         }
     }
-    @Deprecated("Platform activity result bridge")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        super.onActivityResult(requestCode, resultCode, data)
-        if (resultCode != RESULT_OK) return
-        val uri: Uri = data?.data ?: return
-        if (requestCode == pickerCode) {
-            load({ ContactPicker.read(contentResolver, uri) }) { recipient ->
-                updateRecipients(session.batch.all() + recipient)
-            }
+    private fun importCsv() {
+        try { csvPicker.launch(arrayOf("text/csv", "text/plain", "application/csv")) }
+        catch (_: Exception) { toast(R.string.import_missing) }
+    }
+    private fun readPickedContact(uri: Uri) {
+        load({ ContactPicker.read(contentResolver, uri) }) { recipient ->
+            try { session.addPicked(recipient); render() } catch (_: IllegalArgumentException) { toast(R.string.invalid_recipients) }
         }
-        if (requestCode == importCode) {
-            load({ contentResolver.openInputStream(uri)?.use { CsvImport.read(it) } ?: error("unavailable") }) { imported ->
-                show(AlertDialog.Builder(this).setTitle("Import lokalny: ${imported.size} kontaktów")
-                    .setMessage("Zastąpić lokalną listę? Import nie przenosi zgód i nie wysyła danych na serwer. Limit 30 jest ograniczeniem interfejsu, nie podstawą kontaktu.")
-                    .setNegativeButton("Anuluj", null).setPositiveButton("Zastąp") { _, _ -> updateRecipients(imported) })
-            }
+    }
+    private fun readCsv(uri: Uri) {
+        load({ contentResolver.openInputStream(uri)?.use { CsvImport.read(it) } ?: error("unavailable") }) { imported ->
+            show(AlertDialog.Builder(this).setTitle(resources.getQuantityString(R.plurals.import_title, imported.size, imported.size)).setMessage(R.string.import_explanation)
+                .setNegativeButton(R.string.cancel, null).setPositiveButton(R.string.replace_contacts) { _, _ ->
+                    try { session.replaceRecipients(imported); render() } catch (_: IllegalArgumentException) { toast(R.string.invalid_recipients) }
+                })
         }
     }
     override fun onDestroy() {
         operation++; dialog?.dismiss(); dialog = null; work?.cancel(true); executor.shutdownNow(); super.onDestroy()
     }
-    private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
+    private fun toast(id: Int) = Toast.makeText(this, id, Toast.LENGTH_LONG).show()
 }

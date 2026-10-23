@@ -1,0 +1,10 @@
+<resources>
+    <color name="canvas">#F3F6F4</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="ink">#152D27</color>
+    <color name="muted">#4E625B</color>
+    <color name="accent">#146B4F</color>
+    <color name="accent_pressed">#0D513B</color>
+    <color name="outline">#D4DFD9</color>
+    <color name="disabled">#63756D</color>
+</resources>
