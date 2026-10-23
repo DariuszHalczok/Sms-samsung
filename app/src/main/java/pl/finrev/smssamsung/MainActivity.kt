@@ -123,14 +123,14 @@ class MainActivity : Activity() {
                 }
             }
             if (names.isEmpty()) { toast("Nie znaleziono kontaktów"); return }
-            val marks = BooleanArray(names.size) { selected.containsKey(numbers[it]) }
+            val marks = BooleanArray(names.size) { selected.containsKey(normalizePhone(numbers[it])) }
             AlertDialog.Builder(this).setTitle("Wybierz odbiorców")
                 .setMultiChoiceItems(names.toTypedArray(), marks) { _, i, checked -> marks[i] = checked }
                 .setNegativeButton("Anuluj", null)
                 .setPositiveButton("Dodaj") { _, _ ->
                     names.indices.forEach { i ->
-                        if (marks[i]) selected[numbers[i]] = names[i].substringBefore(" — ")
-                        else selected.remove(numbers[i])
+                        if (marks[i]) selected[normalizePhone(numbers[i])] = names[i].substringBefore(" — ")
+                        else selected.remove(normalizePhone(numbers[i]))
                     }
                     renderRecipients()
                 }.show()
@@ -153,11 +153,14 @@ class MainActivity : Activity() {
             }
         }
         if (names.isEmpty()) { toast("Nie znaleziono grup"); return }
+        val marks = BooleanArray(names.size)
         AlertDialog.Builder(this).setTitle("Wybierz grupy")
-            .setMultiChoiceItems(names.toTypedArray(), BooleanArray(names.size)) { _, i, checked ->
-                if (checked) addGroup(ids[i])
-            }
-            .setPositiveButton("Gotowe") { _, _ -> renderRecipients() }.show()
+            .setMultiChoiceItems(names.toTypedArray(), marks) { _, i, checked -> marks[i] = checked }
+            .setNegativeButton("Anuluj", null)
+            .setPositiveButton("Dodaj wybrane") { _, _ ->
+                ids.indices.forEach { i -> if (marks[i]) addGroup(ids[i]) }
+                renderRecipients()
+            }.show()
     }
 
     private fun addGroup(groupId: Long) {
@@ -176,10 +179,21 @@ class MainActivity : Activity() {
             while (c.moveToNext()) if (c.getLong(0) in rawIds) {
                 val phone = c.getString(2) ?: continue
                 if (phone.count { it.isDigit() } >= 6)
-                    selected[phone] = c.getString(1) ?: phone
+                    selected[normalizePhone(phone)] = c.getString(1) ?: phone
             }
         }
         renderRecipients()
+    }
+
+    private fun normalizePhone(phone: String): String {
+        val digits = phone.filter { it.isDigit() }
+        return when {
+            digits.length == 9 -> "+48$digits"
+            digits.length == 11 && digits.startsWith("48") -> "+$digits"
+            digits.startsWith("00") -> "+${digits.drop(2)}"
+            phone.trim().startsWith("+") -> "+$digits"
+            else -> digits
+        }
     }
 
     private fun renderRecipients() {
