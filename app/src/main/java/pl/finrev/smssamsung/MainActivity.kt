@@ -123,7 +123,7 @@ class MainActivity : Activity() {
         }
         AlertDialog.Builder(this)
             .setTitle("Sprawdź przed wysłaniem")
-            .setMessage("Numer: $phone\\n\\nTreść:\\n$message\\n\\nAplikacja otworzy edytor SMS, ale niczego nie wyśle.")
+            .setMessage("Numer: $phone\n\nTreść:\n$message\n\nAplikacja otworzy edytor SMS, ale niczego nie wyśle.")
             .setNegativeButton("Anuluj", null)
             .setPositiveButton("Otwórz Wiadomości") { _, _ -> openSms(phone, message) }
             .show()
