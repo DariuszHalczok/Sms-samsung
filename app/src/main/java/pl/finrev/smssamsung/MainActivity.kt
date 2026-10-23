@@ -28,7 +28,6 @@ class MainActivity : ComponentActivity() {
     private lateinit var search: EditText
     private lateinit var message: EditText
     private var operation = 0L
-    private var pendingSearch = false
     private val speechCode = 100
     private val permissionCode = 101
     private val importCode = 102
@@ -53,6 +52,8 @@ class MainActivity : ComponentActivity() {
         })
         search = EditText(this).apply {
             id = R.id.search; hint = "Wyszukaj osoby lub grupę"; isSaveEnabled = false
+            inputType = android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+            imeOptions = android.view.inputmethod.EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING
             filters = arrayOf(InputFilter.LengthFilter(100)); setText(session.search)
             watch { session.search = it }
         }
@@ -189,15 +190,14 @@ class MainActivity : ComponentActivity() {
 
     private fun ensureContactsAccess() {
         if (checkSelfPermission(Manifest.permission.READ_CONTACTS) == PackageManager.PERMISSION_GRANTED) chooseSearchType()
-        else { pendingSearch = true; requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), permissionCode) }
+        else requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), permissionCode)
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == permissionCode) {
-            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED && pendingSearch) chooseSearchType()
+            if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED) chooseSearchType()
             else toast("Dostęp do kontaktów nie został przyznany")
-            pendingSearch = false
         }
     }
 
