@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, 'codex/**']
 
 permissions:
   contents: read
@@ -30,7 +30,9 @@ jobs:
         run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
       - uses: gradle/actions/setup-gradle@v4
       - name: Unit tests, lint and APKs (no SMS dispatch)
-        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease
+      - name: Verify pilot and release permissions
+        run: python3 scripts/check-apk-permissions.py --aapt "$ANDROID_HOME/build-tools/36.0.0/aapt" --debug app/build/outputs/apk/debug/app-debug.apk --release app/build/outputs/apk/release/app-release-unsigned.apk
       - name: Verify test APK signature and checksum
         run: |
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --verbose app/build/outputs/apk/debug/app-debug.apk

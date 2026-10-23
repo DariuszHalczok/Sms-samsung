@@ -28,15 +28,16 @@ class SessionSmokeTest {
             Templates.render("{link}", Recipient("+12025550101", "Test"))
         }
     }
-    @Test fun applicationHasNoNetworkOrSmsPermissionsAndNoLegacyLinkHandler() {
+    @Test fun releaseHasNoNetworkPermissionAndApplicationHasNoSmsPermissionsOrLegacyLinkHandler() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         assertEquals(MainActivity::class.java.name,
             context.packageManager.getLaunchIntentForPackage(context.packageName)?.component?.className)
         val info = context.packageManager.getPackageInfo(context.packageName,
             android.content.pm.PackageManager.GET_PERMISSIONS)
-        val forbidden = setOf("android.permission.INTERNET", "android.permission.SEND_SMS",
+        val forbidden = setOf("android.permission.SEND_SMS",
             "android.permission.READ_SMS", "android.permission.RECEIVE_SMS")
         assertTrue(info.requestedPermissions.orEmpty().none { it in forbidden })
+        assertEquals(BuildConfig.WARM_MARKET_ENABLED, "android.permission.INTERNET" in info.requestedPermissions.orEmpty())
         val link = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("smssamsung://compose?text=test"))
             .setPackage(context.packageName).addCategory(Intent.CATEGORY_BROWSABLE)
         assertTrue(context.packageManager.queryIntentActivities(link, 0).isEmpty())

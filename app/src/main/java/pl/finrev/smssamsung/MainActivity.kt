@@ -20,6 +20,7 @@ import java.util.concurrent.Future
 
 class MainActivity : ComponentActivity() {
     private val session: DraftSession by viewModels()
+    private lateinit var warmUi: WarmMarketUi
     private val history by lazy { DraftHistory(this) }
     private val executor = Executors.newSingleThreadExecutor()
     private var work: Future<*>? = null
@@ -46,7 +47,7 @@ class MainActivity : ComponentActivity() {
             setOnClickListener { action() }
             layout.addView(this)
         }
-        layout.addView(TextView(this).apply { text = "SMS Samsung 0.4 — szkice"; textSize = 24f })
+        layout.addView(TextView(this).apply { text = "SMS Samsung 0.5 — Ciepły Rynek"; textSize = 24f })
         layout.addView(TextView(this).apply {
             text = "Doradca.pro pozostaje CRM. Paczka jest tylko w pamięci sesji. Każdy SMS zatwierdzasz w aplikacji SMS. Nie potwierdzamy wysłania ani doręczenia."
         })
@@ -63,9 +64,12 @@ class MainActivity : ComponentActivity() {
         recipients = TextView(this).apply { id = R.id.recipients; textSize = 16f; isSaveEnabled = false }
         layout.addView(recipients)
         button("Wyczyść sesję", R.id.clear_session) { clearSession() }
+        if (BuildConfig.WARM_MARKET_ENABLED) button("Ciepły Rynek — pilotaż API", R.id.warm_market) {
+            if (session.warmQueue != null) warmUi.overview() else warmUi.initialize()
+        }
         button("Doradca.pro — status integracji") {
             show(AlertDialog.Builder(this).setTitle("Integracja oczekuje na backend")
-                .setMessage("Brak zweryfikowanego API kampanii, OAuth/parowania i serwerowego potwierdzenia zgód. Pobieranie API i linki kampanii są wyłączone. Użyj zatwierdzonego eksportu CSV. Nie wpisuj tutaj tokenów.")
+                .setMessage("Moduł Ciepły Rynek jest przygotowywany. Połączenie z produkcyjnym Doradca.pro, OAuth/parowanie i Landing Page wymagają wdrożenia. Pilotaż API w tej wersji testowej używa ręcznego tokenu tylko w RAM. Zwykły SMS nie daje informacji o odczytaniu.")
                 .setPositiveButton("OK", null))
         }
         message = EditText(this).apply {
@@ -85,6 +89,7 @@ class MainActivity : ComponentActivity() {
                 .setNeutralButton("Wyczyść historię") { _, _ -> history.clear() })
         }
         button("Dyktuj wiadomość") {
+            if (session.warmQueue != null) { toast("Edytuj treść osobno w kolejce Ciepłego Rynku"); return@button }
             try {
                 startActivityForResult(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -101,6 +106,14 @@ class MainActivity : ComponentActivity() {
                 insets
             }
         })
+        warmUi = WarmMarketUi(this, session, ::show, ::toast,
+            { read, done -> load(read) { done(it) } }, { campaign ->
+                session.batch.replace(campaign.recipients)
+                session.warmQueue = WarmQueue(campaign)
+                history.record(campaign.recipients.size)
+                message.setText(campaign.template)
+                session.changed(); renderRecipients()
+            })
         // Exported launcher deliberately ignores extras. Only our in-app share entry forwards text.
         acceptInternalDraft()
         renderRecipients()
@@ -125,10 +138,11 @@ class MainActivity : ComponentActivity() {
         })
     }
 
-    private fun show(builder: AlertDialog.Builder) {
+    private fun show(builder: AlertDialog.Builder): AlertDialog? {
         dialog?.dismiss()
-        if (isFinishing || isDestroyed) return
-        dialog = builder.show().also { it.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE) }
+        if (isFinishing || isDestroyed) return null
+        dialog = builder.create().also { it.window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE); it.show() }
+        return dialog
     }
 
     private fun clearSession() {
@@ -137,7 +151,7 @@ class MainActivity : ComponentActivity() {
         session.clear()
         search.text.clear(); message.text.clear()
         SharedDraft.clear()
-        dialog?.dismiss()
+        dialog?.dismiss(); dialog = null
         renderRecipients()
     }
 
@@ -179,6 +193,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun chooseTemplate() {
+        if (session.warmQueue != null) { warmUi.overview(); return }
         val texts = arrayOf(
             "Dzień dobry {imie}, zapraszam do przeglądu warunków kredytu hipotecznego. Czy możemy umówić krótką rozmowę?",
             "Dzień dobry {imie}, proponuję przegląd aktualnej ochrony ubezpieczeniowej. Czy znajdziemy dogodny termin rozmowy?",
@@ -242,17 +257,23 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun updateRecipients(candidate: List<Recipient>) {
-        try { session.batch.replace(candidate); session.changed(); renderRecipients() }
+        try {
+            session.batch.replace(candidate.map { Recipient(it.phone, it.name) })
+            session.warmQueue = null
+            session.changed(); renderRecipients()
+        }
         catch (_: IllegalArgumentException) { toast("Nie zmieniono paczki: niepoprawne dane, duplikaty lub więcej niż 30 odbiorców") }
     }
 
     private fun renderRecipients() {
         val list = session.batch.all()
+        message.isEnabled = session.warmQueue == null
         recipients.text = if (list.isEmpty()) "Odbiorcy: brak" else
             "Odbiorcy (${list.size}): " + list.joinToString(", ") { it.name.ifBlank { it.phone } }
     }
 
     private fun preview() {
+        if (session.warmQueue != null) { warmUi.overview(); return }
         val clients = session.batch.all()
         if (clients.isEmpty()) { toast("Najpierw wybierz odbiorców"); return }
         val bodies = try { clients.map { Templates.render(session.body, it) } }
@@ -281,7 +302,7 @@ class MainActivity : ComponentActivity() {
         if (index >= clients.size) { toast("Koniec listy szkiców. Status wysłania nieznany."); return }
         val client = clients[index]
         val body = bodies[index]
-        val size = SmsSizing.calculate(body)
+        val size = AndroidSmsSizing.calculate(body)
         show(AlertDialog.Builder(this).setTitle("Szkic ${index + 1}/${clients.size}: ${client.name}")
             .setMessage("${client.phone}\n\n$body\n\n${size.encoding}: ${size.units} jednostek, szac. ${size.segments} SMS. Koszt wg operatora.")
             .setNegativeButton("Zakończ", null)

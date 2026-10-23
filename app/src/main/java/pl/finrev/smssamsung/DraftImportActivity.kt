@@ -25,6 +25,6 @@ class DraftImportActivity : Activity() {
                     flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
                 })
                 finish()
-            }.show().window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            }.create().apply { window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE); show() }
     }
 }

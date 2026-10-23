@@ -1,8 +1,10 @@
-# SMS Samsung — szkice SMS, beta 0.4.0
+# SMS Samsung — szkice SMS, beta 0.5.0
 
-Android 8+ (min SDK 26), compile/target SDK 36. Docelowy telefon: Samsung Galaxy S24 Ultra / Android 16. **Wersja testowa, integracja backendowa oczekuje na wdrożenie.**
+Android 8+ (min SDK 26), compile SDK 36 / target SDK 35. Docelowy telefon: Samsung Galaxy S24 Ultra / Android 16. **Wersja testowa, integracja backendowa oczekuje na wdrożenie.**
 
 Doradca.pro jest jedynym CRM: odpowiada za klientów, produkty OVB, segmenty, zgody, wykluczenia kontaktu, powtórzenia, rezerwacje i analitykę. Telefon przechowuje tylko roboczą paczkę w pamięci sesji. Nie ma integracji Bitrix.
+
+Nowy etap: [Ciepły Rynek — zakres, pilotaż API i blokery](docs/WARM_MARKET.md). Obejmuje szyfrowaną poczekalnię w nowym module backendu, proponowany kontrakt inicjalizacji oraz kolejkę indywidualnych szkiców. Produkcyjne połączenie i Landing Page pozostają niewdrożone.
 
 ## Działanie
 
@@ -12,11 +14,11 @@ Doradca.pro jest jedynym CRM: odpowiada za klientów, produkty OVB, segmenty, zg
 - Podgląd **każdego** odbiorcy, numeru, treści i szacunkowej liczby segmentów GSM-7/Unicode. Koszt zależy od operatora.
 - Potwierdzenie sprawdzenia podstaw kontaktu w CRM. To oświadczenie użytkownika, **nie serwerowa weryfikacja zgód**.
 - Przycisk otwiera pojedynczy szkic przez `ACTION_SENDTO smsto:`. Wysłanie wymaga decyzji w aplikacji SMS. Status: „szkic” lub „edytor otwarty — wysłanie nieznane”. Brak SEND_SMS, odbioru wiadomości i potwierdzeń doręczenia.
-- Obrót ekranu zachowuje stan wyłącznie w ViewModel. Zakończenie Activity lub śmierć procesu kończy sesję. Przycisk „Wyczyść sesję” usuwa odbiorców, linki, treść i wyszukiwanie. Historia przechowuje tylko czas i liczbę odbiorców (do 30 wpisów), ma osobne czyszczenie.
+- Obrót ekranu zachowuje stan wyłącznie w ViewModel. Zakończenie Activity lub śmierć procesu kończy sesję; wznowienie kampanii w CRM wymaga osobnego endpointu. Przycisk „Wyczyść sesję” usuwa odbiorców, linki, treść i wyszukiwanie. Historia przechowuje tylko czas i liczbę odbiorców (do 30 wpisów), ma osobne czyszczenie.
 
 ## Integracja — jawne ograniczenia
 
-Pobieranie API i ręczny formularz tokenu zostały wyłączone: dostępne materiały Doradca.pro nie potwierdzają działającego kontraktu kampanii ani OAuth/parowania. Aplikacja nie ma uprawnienia INTERNET. Nie sprawdzono autoryzacji na działającym serwerze. Szczegóły: [audyt i blokery](docs/P0_AUDIT.md).
+Historyczny GET z dowolnym adresem endpointu i tokenem został usunięty. W 0.5.0 przygotowano oddzielny pilot nowego POST, zgodnego z propozycją modułu Ciepły Rynek. Dostępne materiały nie potwierdzają jego wdrożenia w produkcyjnym Doradca.pro ani OAuth/parowania. Wariant release nie ma INTERNET. W debug 0.5.0 dostępny jest oddzielny pilot POST opisany w WARM_MARKET.md; token doradcy jest używany wyłącznie w RAM na czas żądania. Nie sprawdzono autoryzacji na działającym serwerze. Szczegóły: [audyt i blokery](docs/P0_AUDIT.md).
 
 Stary `smssamsung://compose?text=...` został usunięty z manifestu, aby nie przekazywać treści ani danych klientów w URL. Link z wygasającym opaque kodem kampanii wymaga rzeczywistego backendu i pozostaje wyłączony. Można użyć Android „Udostępnij” → SMS Samsung, sprawdzić tekst i potwierdzić import; odbiorców należy wybrać ponownie. Eksportowany launcher ignoruje obce extras. Nie ma automatycznego połączenia z rozmową ChatGPT.
 

@@ -8,9 +8,9 @@ android {
     defaultConfig {
         applicationId = "pl.finrev.smssamsung"
         minSdk = 26
-        targetSdk = 36
-        versionCode = 4
-        versionName = "0.4.0"
+        targetSdk = 35
+        versionCode = 5
+        versionName = "0.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     compileOptions {
@@ -18,10 +18,15 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
+    buildFeatures { buildConfig = true }
+    buildTypes {
+        getByName("debug") { buildConfigField("boolean", "WARM_MARKET_ENABLED", "true") }
+        getByName("release") { buildConfigField("boolean", "WARM_MARKET_ENABLED", "false") }
+    }
 }
 dependencies {
     implementation("androidx.activity:activity-ktx:1.10.1")
-    implementation("com.googlecode.libphonenumber:libphonenumber:8.13.55")
+    implementation("com.googlecode.libphonenumber:libphonenumber:9.0.42")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test:core:1.6.1")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
