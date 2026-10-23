@@ -20,6 +20,8 @@ import org.junit.runner.RunWith
 class SessionSmokeTest {
     @Test fun applicationHasNoNetworkOrSmsPermissionsAndNoLegacyLinkHandler() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        assertEquals(MainActivity::class.java.name,
+            context.packageManager.getLaunchIntentForPackage(context.packageName)?.component?.className)
         val info = context.packageManager.getPackageInfo(context.packageName,
             android.content.pm.PackageManager.GET_PERMISSIONS)
         val forbidden = setOf("android.permission.INTERNET", "android.permission.SEND_SMS",
