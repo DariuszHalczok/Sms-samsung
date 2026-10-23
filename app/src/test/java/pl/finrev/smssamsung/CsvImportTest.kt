@@ -37,7 +37,7 @@ class CsvImportTest {
     @Test fun rejectsMalformedQuotesColumnsNumbersAndDuplicateHeaders() {
         listOf("name;phone\n\"Test;+12025550101", "name;phone\nTe\"st;+12025550101",
             "name;phone\n\"Test\"x;+12025550101", "name;phone\nTest;123", "name;phone\nTest;+12025550101;extra",
-            "name;phone;telefon\nTest;+12025550101;+12025550102", "name;phone\n", "name\nTest").forEach {
+            "name;phone;telefon\nTest;+12025550101;+12025550102", "name;phone\n", "name\nTest", "name;phone\n;\n").forEach {
             assertThrows(IllegalArgumentException::class.java) { CsvImport.parse(it) }
         }
     }

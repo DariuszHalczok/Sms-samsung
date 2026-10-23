@@ -6,7 +6,6 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
-import android.provider.ContactsContract
 import android.speech.RecognizerIntent
 import android.text.Editable
 import android.text.InputFilter
@@ -28,6 +27,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var recipients: TextView
     private lateinit var search: EditText
     private lateinit var message: EditText
+    private var operation = 0L
     private var pendingSearch = false
     private val speechCode = 100
     private val permissionCode = 101
@@ -131,6 +131,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun clearSession() {
+        operation++
         work?.cancel(true)
         session.clear()
         search.text.clear(); message.text.clear()
@@ -148,27 +149,31 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) { toast("Nie można otworzyć wyboru pliku") }
     }
 
-    private fun importCsvData(uri: Uri) {
+    private fun <T> load(read: () -> T, done: (T) -> Unit) {
         val revision = session.revision
+        val request = ++operation
         work?.cancel(true)
         work = executor.submit {
             try {
-                val imported = contentResolver.openInputStream(uri)?.use { CsvImport.read(it) }
-                    ?: throw IllegalArgumentException("Nie można odczytać pliku")
+                val result = read()
                 runOnUiThread {
-                    if (isDestroyed || isFinishing || session.revision != revision) return@runOnUiThread
-                    show(AlertDialog.Builder(this).setTitle("Wczytano ${imported.size} odbiorców")
-                        .setMessage("Zastąpić bieżącą paczkę? Zgody, cel i uprawnienia sprawdzisz w Doradca.pro przed przygotowaniem szkiców.")
-                        .setNegativeButton("Anuluj", null).setPositiveButton("Załaduj") { _, _ ->
-                            updateRecipients(imported)
-                        })
+                    if (!isDestroyed && !isFinishing && operation == request && session.revision == revision) done(result)
                 }
             } catch (_: Exception) {
                 runOnUiThread {
-                    if (!isDestroyed && !isFinishing && session.revision == revision)
-                        toast("Nieprawidłowy CSV: sprawdź UTF-8, nagłówki, cudzysłowy, numery i limit 30 osób")
+                    if (!isDestroyed && !isFinishing && operation == request && session.revision == revision)
+                        toast("Nie wczytano danych. Sprawdź uprawnienia, format pliku, numery i limit 30 osób.")
                 }
             }
+        }
+    }
+
+    private fun importCsvData(uri: Uri) {
+        load({ contentResolver.openInputStream(uri)?.use { CsvImport.read(it) }
+            ?: throw IllegalArgumentException("Nie można odczytać pliku") }) { imported ->
+            show(AlertDialog.Builder(this).setTitle("Wczytano ${imported.size} odbiorców")
+                .setMessage("Zastąpić bieżącą paczkę? Zgody, cel i uprawnienia sprawdzisz w Doradca.pro przed przygotowaniem szkiców.")
+                .setNegativeButton("Anuluj", null).setPositiveButton("Załaduj") { _, _ -> updateRecipients(imported) })
         }
     }
 
@@ -187,7 +192,7 @@ class MainActivity : ComponentActivity() {
         else { pendingSearch = true; requestPermissions(arrayOf(Manifest.permission.READ_CONTACTS), permissionCode) }
     }
 
-    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == permissionCode) {
             if (grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED && pendingSearch) chooseSearchType()
@@ -202,22 +207,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun choosePeople() {
-        try {
-            val found = linkedMapOf<String, Recipient>()
-            val query = search.text.toString().trim()
-            contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                arrayOf(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY, ContactsContract.CommonDataKinds.Phone.NUMBER),
-                if (query.isBlank()) null else "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY} LIKE ?",
-                if (query.isBlank()) null else arrayOf("%$query%"),
-                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY + " ASC")?.use { c ->
-                while (c.moveToNext() && found.size < 300) {
-                    val phone = try { Phones.normalize(c.getString(1).orEmpty()) } catch (_: Exception) { continue }
-                    val name = c.getString(0).orEmpty().take(100)
-                    if (name.none { it.isISOControl() }) found.putIfAbsent(phone, Recipient(phone, name))
-                }
-            }
-            val items = found.values.toList()
-            if (items.isEmpty()) { toast("Nie znaleziono poprawnych kontaktów"); return }
+        val query = search.text.toString().trim()
+        load({ ContactsSource(contentResolver).people(query) }) { items ->
+            if (items.isEmpty()) { toast("Nie znaleziono poprawnych kontaktów"); return@load }
             val current = session.batch.all().associateBy { it.phone }
             val marks = BooleanArray(items.size) { items[it].phone in current }
             show(AlertDialog.Builder(this).setTitle("Wybierz odbiorców (maks. 30)")
@@ -228,58 +220,25 @@ class MainActivity : ComponentActivity() {
                         items.filterIndexed { i, _ -> marks[i] }.map { current[it.phone] ?: it }
                     updateRecipients(candidate)
                 })
-        } catch (_: SecurityException) { toast("Brak dostępu do kontaktów") }
+        }
     }
 
     private fun chooseGroups() {
-        try {
-            val groups = mutableListOf<Pair<Long, String>>()
-            val query = search.text.toString().trim()
-            contentResolver.query(ContactsContract.Groups.CONTENT_URI,
-                arrayOf(ContactsContract.Groups._ID, ContactsContract.Groups.TITLE),
-                "${ContactsContract.Groups.DELETED}=0", null, ContactsContract.Groups.TITLE + " ASC")?.use { c ->
-                while (c.moveToNext() && groups.size < 300) {
-                    val title = c.getString(1).orEmpty()
-                    if (query.isBlank() || title.contains(query, true)) groups.add(c.getLong(0) to title)
-                }
-            }
-            if (groups.isEmpty()) { toast("Nie znaleziono grup"); return }
+        val query = search.text.toString().trim()
+        load({ ContactsSource(contentResolver).groups(query) }) { groups ->
+            if (groups.isEmpty()) { toast("Nie znaleziono grup"); return@load }
             val marks = BooleanArray(groups.size)
             show(AlertDialog.Builder(this).setTitle("Wybierz grupy (łącznie maks. 30 osób)")
                 .setMultiChoiceItems(groups.map { it.second }.toTypedArray(), marks) { _, i, checked -> marks[i] = checked }
                 .setNegativeButton("Anuluj", null).setPositiveButton("Dodaj") { _, _ ->
-                    try {
+                    val ids = groups.filterIndexed { i, _ -> marks[i] }.map { it.first }
+                    load({ ContactsSource(contentResolver).groupMembers(ids) }) { members ->
                         val combined = session.batch.all().associateBy { it.phone }.toMutableMap()
-                        groups.filterIndexed { i, _ -> marks[i] }.forEach { group ->
-                            for (recipient in groupMembers(group.first)) combined.putIfAbsent(recipient.phone, recipient)
-                        }
+                        members.forEach { combined.putIfAbsent(it.phone, it) }
                         updateRecipients(combined.values.toList())
-                    } catch (_: Exception) { toast("Grupa przekracza limit 30 osób lub dostęp do kontaktów jest niedostępny") }
+                    }
                 })
-        } catch (_: SecurityException) { toast("Brak dostępu do kontaktów") }
-    }
-
-    private fun groupMembers(groupId: Long): List<Recipient> {
-        val found = linkedMapOf<String, Recipient>()
-        val contactIds = linkedSetOf<Long>()
-        contentResolver.query(ContactsContract.Data.CONTENT_URI,
-            arrayOf(ContactsContract.Data.RAW_CONTACT_ID),
-            "${ContactsContract.Data.MIMETYPE}=? AND ${ContactsContract.CommonDataKinds.GroupMembership.GROUP_ROW_ID}=?",
-            arrayOf(ContactsContract.CommonDataKinds.GroupMembership.CONTENT_ITEM_TYPE, groupId.toString()), null)?.use { c ->
-            while (c.moveToNext()) contactIds.add(c.getLong(0))
         }
-        if (contactIds.isEmpty()) return emptyList()
-        contentResolver.query(ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-            arrayOf(ContactsContract.CommonDataKinds.Phone.RAW_CONTACT_ID, ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME_PRIMARY,
-                ContactsContract.CommonDataKinds.Phone.NUMBER), null, null, null)?.use { c ->
-            while (c.moveToNext()) if (c.getLong(0) in contactIds) {
-                val phone = try { Phones.normalize(c.getString(2).orEmpty()) } catch (_: Exception) { continue }
-                val name = c.getString(1).orEmpty().take(100)
-                if (name.none { it.isISOControl() }) found[phone] = Recipient(phone, name)
-                require(found.size <= MAX_RECIPIENTS)
-            }
-        }
-        return found.values.toList()
     }
 
     private fun updateRecipients(candidate: List<Recipient>) {
@@ -352,6 +311,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        operation++
         dialog?.dismiss(); dialog = null
         work?.cancel(true); executor.shutdownNow()
         super.onDestroy()

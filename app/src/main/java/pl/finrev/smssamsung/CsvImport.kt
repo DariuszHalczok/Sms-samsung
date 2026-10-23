@@ -78,7 +78,7 @@ object CsvImport {
         fun finishCell() { row.add(cell.toString()); cell.setLength(0); closed = false }
         fun finishRow() {
             finishCell()
-            if (row.any { it.isNotBlank() }) result.add(row.toList())
+            if (row.size > 1 || row.any { it.isNotBlank() }) result.add(row.toList())
             require(result.size <= 1000) { "Zbyt wiele wierszy CSV" }
             row = mutableListOf()
         }

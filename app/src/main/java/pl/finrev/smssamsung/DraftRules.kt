@@ -107,7 +107,7 @@ object SmsSizing {
     private val extended = "\u000c^{}\\[~]|€".toSet()
     fun calculate(body: String): SmsSize {
         val gsm = body.all { it in basic || it in extended }
-        val units = if (gsm) body.sumOf { if (it in extended) 2 else 1 } else body.length
+        val units = if (gsm) body.fold(0) { count, c -> count + if (c in extended) 2 else 1 } else body.length
         val single = if (gsm) 160 else 70
         val multi = if (gsm) 153 else 67
         return SmsSize(if (gsm) "GSM-7" else "Unicode", units,

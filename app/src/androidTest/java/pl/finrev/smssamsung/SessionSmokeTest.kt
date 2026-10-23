@@ -1,6 +1,5 @@
 package pl.finrev.smssamsung
 
-import android.app.AlertDialog
 import android.content.Intent
 import android.view.WindowManager
 import android.widget.EditText
@@ -19,6 +18,17 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SessionSmokeTest {
+    @Test fun applicationHasNoNetworkOrSmsPermissionsAndNoLegacyLinkHandler() {
+        val context = ApplicationProvider.getApplicationContext<android.content.Context>()
+        val info = context.packageManager.getPackageInfo(context.packageName,
+            android.content.pm.PackageManager.GET_PERMISSIONS)
+        val forbidden = setOf("android.permission.INTERNET", "android.permission.SEND_SMS",
+            "android.permission.READ_SMS", "android.permission.RECEIVE_SMS")
+        assertTrue(info.requestedPermissions.orEmpty().none { it in forbidden })
+        val link = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("smssamsung://compose?text=test"))
+            .setPackage(context.packageName).addCategory(Intent.CATEGORY_BROWSABLE)
+        assertTrue(context.packageManager.queryIntentActivities(link, 0).isEmpty())
+    }
     @Test fun consentIsRequiredBeforeReviewingAnyDraft() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->
