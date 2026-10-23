@@ -21,18 +21,49 @@ def adb(*args, check=True):
     return result.stdout
 
 
+def hierarchy():
+    adb('shell', 'uiautomator', 'dump', '/sdcard/sms-samsung-smoke.xml')
+    return ET.fromstring(adb('exec-out', 'cat', '/sdcard/sms-samsung-smoke.xml'))
+
+
+def rectangle(node):
+    values = list(map(int, re.findall(r'\d+', node.get('bounds', ''))))
+    return values if len(values) == 4 and values[3] > values[1] and values[2] > values[0] else None
+
+
+def hide_keyboard():
+    # BACK would finish the Activity without an IME. Detect it before dismissing.
+    root = hierarchy()
+    if any('inputmethod' in node.get('package', '') for node in root.iter('node')):
+        adb('shell', 'input', 'keyevent', 'KEYCODE_BACK')
+
+
 def message_node():
-    for _ in range(5):
-        adb('shell', 'uiautomator', 'dump', '/sdcard/sms-samsung-smoke.xml')
-        root = ET.fromstring(adb('exec-out', 'cat', '/sdcard/sms-samsung-smoke.xml'))
+    root = None
+    for attempt in range(10):
+        root = hierarchy()
         for node in root.iter('node'):
             if node.get('resource-id') == PACKAGE + ':id/message':
-                bounds = list(map(int, re.findall(r'\d+', node.get('bounds', ''))))
-                if len(bounds) == 4 and bounds[3] > bounds[1] and bounds[2] > bounds[0]:
+                bounds = rectangle(node)
+                if bounds:
                     return node, bounds
-        size = re.findall(r'(\d+)x(\d+)', adb('shell', 'wm', 'size').decode())[-1]
-        width, height = map(int, size)
-        adb('shell', 'input', 'swipe', str(width // 2), str(height * 8 // 10), str(width // 2), str(height * 3 // 10), '300')
+        # Stay inside the app's scroll view rather than swiping over a keyboard.
+        viewport = next((rectangle(node) for node in root.iter('node')
+                         if node.get('resource-id') == PACKAGE + ':id/composer_scroll'), None)
+        if not viewport:
+            break
+        left, top, right, bottom = viewport
+        x = (left + right) // 2
+        lower = top + (bottom - top) * 8 // 10
+        upper = top + (bottom - top) * 3 // 10
+        start, end = (lower, upper) if attempt < 5 else (upper, lower)
+        adb('shell', 'input', 'swipe', str(x), str(start), str(x), str(end), '300')
+    # Structural diagnostics only: no contacts, private text or screenshots.
+    if root is not None:
+        (REPORTS / 'visibility-diagnostic.json').write_text(json.dumps([
+            {key: node.get(key) for key in ('resource-id', 'class', 'bounds', 'scrollable')}
+            for node in root.iter('node') if node.get('package') == PACKAGE
+        ], indent=2) + '\n')
     raise AssertionError('Message field not visible')
 
 
@@ -48,6 +79,7 @@ baseline, bounds = message_node()
 baseline_text = baseline.get('text')
 adb('shell', 'input', 'tap', str((bounds[0] + bounds[2]) // 2), str((bounds[1] + bounds[3]) // 2))
 adb('shell', 'input', 'text', MARKER)
+hide_keyboard()
 node, _ = message_node()
 assert node.get('text') == MARKER, 'Synthetic draft was not entered'
 old_pid = adb('shell', 'pidof', PACKAGE).strip()

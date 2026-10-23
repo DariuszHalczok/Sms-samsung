@@ -10,6 +10,7 @@ Rozwinięcie 0.6 po audycie zgodności. Nie zmienia modelu przesyłania danych a
 - Publiczny profil doradcy zapisany w oddzielnym ustawieniu. Walidacja UUID, usuwanie nieznanych pól, brak tokenów, danych kontaktów i treści. „Wyczyść szkic i kontakty” go zachowuje; opcje profilu umożliwiają usunięcie. Zmiana profilu unieważnia powiązany materiał/treść i wynik żądania w toku.
 - Przygotowane odpowiedzi wyłącznie dla wybranego zamówionego materiału; wybór szablonu nie ustala podstawy prawnej. Każdy podgląd wymaga nowego oświadczenia o kontekście.
 - Bieżące informacje o długości szkicu przed personalizacją, pełny przeliczony podgląd przed edytorem. Stan wczytywania i komunikaty o wyniku pominiętym po zmianie szkicu.
+- Obsługa insetów klawiatury/systemu i adjustResize: pole treści pozostaje dostępne podczas wpisywania. Próba procesu wykrywa klawiaturę, zamyka ją przed inspekcją i przewija wyłącznie formularz; przy błędzie zapisuje strukturę widoków bez tekstów.
 - Activity Result API dla pickera i pliku, bez trwałego grantu URI. Wykluczenia backupu i transferu urządzenia, FLAG_SECURE bez zmian.
 - Pakiet marketingowy opisuje produkt i proponowany pilotaż. Nie uruchomiono reklam, nie opublikowano strony i nie wysłano wiadomości do odbiorców. Nie włączono marketingu SMS w aplikacji.
 

@@ -47,6 +47,20 @@ class ComposerExperienceTest {
             assertEquals(profile,store.load()); assertEquals(setOf("public_id"),prefs.all.keys)
         } finally { store.clear() }
     }
+    @Test fun keyboardEntryRemainsReadableWithoutOpeningSmsEditor() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            onView(withId(R.id.message)).perform(
+                androidx.test.espresso.action.ViewActions.scrollTo(), click(),
+                androidx.test.espresso.action.ViewActions.typeText("Synthetic keyboard draft"),
+                androidx.test.espresso.action.ViewActions.closeSoftKeyboard())
+            onView(withId(R.id.message)).check(matches(withText("Synthetic keyboard draft")))
+            onView(withId(R.id.message)).check(matches(isDisplayed()))
+            scenario.onActivity { activity ->
+                assertEquals("Synthetic keyboard draft", ViewModelProvider(activity)[DraftSession::class.java].body)
+                assertTrue(ViewModelProvider(activity)[DraftSession::class.java].batch.all().isEmpty())
+            }
+        }
+    }
     @Test fun firstPurposeChoiceKeepsSharedDraftAndDoesNotAskToDiscardIt() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             scenario.onActivity { activity ->

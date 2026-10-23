@@ -14,6 +14,8 @@ import android.widget.*
 import androidx.activity.ComponentActivity
 import androidx.activity.viewModels
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
 
@@ -44,9 +46,10 @@ class MainActivity : ComponentActivity() {
             if (view is ViewGroup) for (i in 0 until view.childCount) transient(view.getChildAt(i))
         }
         transient(findViewById(R.id.composer_scroll))
-        findViewById<ScrollView>(R.id.composer_scroll).setOnApplyWindowInsetsListener { view, insets ->
-            view.setPadding(insets.systemWindowInsetLeft, insets.systemWindowInsetTop,
-                insets.systemWindowInsetRight, insets.systemWindowInsetBottom); insets
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.composer_scroll)) { view, insets ->
+            val edges = insets.getInsets(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.ime())
+            view.setPadding(edges.left, edges.top, edges.right, edges.bottom)
+            insets
         }
         message = findViewById(R.id.message)
         message.setText(session.body)
