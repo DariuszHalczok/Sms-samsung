@@ -85,7 +85,7 @@ object Templates {
             "nazwisko" to name.substringAfter(' ', ""), "link" to recipient.clickUrl
         )
         // A single substitution pass prevents placeholders inside names becoming instructions.
-        val rendered = Regex("\\{([^{}]+)}").replace(template) { match ->
+        val rendered = Regex("\\{([^{}]+)\\}").replace(template) { match ->
             val replacement = values[match.groupValues[1]]
             require(!replacement.isNullOrBlank()) { "Brak wartości pola szablonu lub nieznane pole" }
             if (match.groupValues[1] == "link") DoradcaUrls.validate(replacement)

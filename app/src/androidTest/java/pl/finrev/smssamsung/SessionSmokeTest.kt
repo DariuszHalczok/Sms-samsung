@@ -18,6 +18,14 @@ import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
 class SessionSmokeTest {
+    @Test fun templatePlaceholdersWorkWithAndroidRegexEngine() {
+        val recipient = Recipient("+12025550101", "Test Example", "https://doradca.pro/track/opaque")
+        assertEquals("Test Example https://doradca.pro/track/opaque",
+            Templates.render("{imie} {nazwisko} {link}", recipient))
+        assertThrows(IllegalArgumentException::class.java) {
+            Templates.render("{link}", Recipient("+12025550101", "Test"))
+        }
+    }
     @Test fun applicationHasNoNetworkOrSmsPermissionsAndNoLegacyLinkHandler() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         assertEquals(MainActivity::class.java.name,
@@ -88,7 +96,8 @@ class SessionSmokeTest {
     @Test fun smsEditorIntentHasOneRecipientAndNeverDispatchesDuringTests() {
         val intent = SmsIntents.editor(Recipient("+12025550101", "Test"), "Test draft")
         assertEquals(Intent.ACTION_SENDTO, intent.action)
-        assertEquals("smsto:+12025550101", intent.data.toString())
+        assertEquals("smsto", intent.data?.scheme)
+        assertEquals("+12025550101", intent.data?.schemeSpecificPart)
         assertEquals("Test draft", intent.getStringExtra("sms_body"))
         // Deliberately never call startActivity(intent).
     }
