@@ -1,15 +1,22 @@
-# SMS Samsung — AI SMS Assistant
+# SMS Samsung — Asystent SMS (beta 0.2)
 
-Android 16 / Galaxy S24 Ultra. Quick Start: wybierz numer w kontaktach, edytuj wiadomość i otwórz natywną aplikację SMS z treścią do ręcznego wysłania.
+Aplikacja Android 16 / Galaxy S24 Ultra. Działa na danych kontaktowych widocznych na telefonie (w tym zsynchronizowanych z kontem Google).
 
-**Nie wysyła automatycznie SMS i nie łączy się jeszcze bezpośrednio z ChatGPT.** Nie wymaga SEND_SMS, odczytu bazy SMS ani kluczy API.
+## Funkcje beta 0.2
+- Wyszukuj kontakty po imieniu lub nazwisku i zaznaczaj wielu odbiorców.
+- Wybieraj grupy kontaktów, o ile są dostępne przez systemowy Contacts Provider.
+- Dyktuj **treść** wiadomości przez usługę rozpoznawania mowy Android.
+- Udostępniaj tekst z aplikacji ChatGPT do SMS Samsung przez systemowe menu "Udostępnij", a następnie wybieraj odbiorców.
+- Przed wysyłką wyświetlany jest podgląd odbiorców i wiadomości.
+- Każdego SMS-a otwiera się indywidualnie w domyślnej aplikacji SMS; wysłanie wymaga ręcznego potwierdzenia. Aplikacja nie stwierdza, czy SMS rzeczywiście wysłano.
 
-## Instalacja wyłącznie telefonem
+## Ograniczenia
+- **Polecenie wypowiedziane w samej rozmowie ChatGPT nie uruchamia jeszcze aplikacji ani nie odczytuje jej kontaktów.** To wymaga oddzielnego, świadomie autoryzowanego mostu integracyjnego (np. backend + parowanie urządzenia i powiadomienie aplikacji albo obsługa linku w urządzeniu).
+- Dyktowanie w aplikacji rozpoznaje treść, a nie polecenia rozpoznawania nazwisk.
+- Wybór grup zależy od konta i sposobu synchronizacji; nie wszystkie etykiety Google Contacts są wystawiane jako systemowe grupy.
+- Nie korzysta z SEND_SMS i nie wysyła automatycznie. Brak masowej wysyłki bezpośredniej.
+- Wymaga uprawnienia READ_CONTACTS udzielonego na telefonie. Nie wysyła książki kontaktów na serwer.
+- Numery różnych formatów mogą pojawić się podwójnie; przed wysyłką należy zweryfikować listę.
 
-1. Otwórz zakładkę **Actions** tego repozytorium.
-2. Wybierz **Build Android APK**, **Run workflow**, `main`, **Run workflow** (albo uruchomiony automatycznie build po commicie).
-3. Otwórz zakończony sukcesem run i pobierz artefakt `sms-samsung-debug-apk`.
-4. Rozpakuj ZIP z artefaktem i otwórz `app-debug.apk` na Samsungu. Zatwierdź instalację z zaufanego źródła, jeśli Android o to poprosi.
-5. Otwórz aplikację, wybierz własny numer i przetestuj wiadomość. Wysłanie wymaga kliknięcia w Wiadomościach Google.
-
-Uwaga: APK jest debugowy i nieprzeznaczony do masowej dystrybucji; przed wdrożeniem dla doradców wymagane są testy na urządzeniu, podpisanie wydania i przegląd bezpieczeństwa.
+## Instalacja
+Otwórz [Actions](https://github.com/DariuszHalczok/Sms-samsung/actions), wybierz najnowsze udane uruchomienie **Build Android APK**, pobierz artefakt `sms-samsung-debug-apk`, rozpakuj ZIP i zainstaluj APK. Wersja debugowa wymaga testów i nie służy do dystrybucji produkcyjnej.
