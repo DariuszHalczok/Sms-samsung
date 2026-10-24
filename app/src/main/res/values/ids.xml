@@ -1,0 +1,12 @@
+<resources>
+    <item name="message" type="id" />
+    <item name="mode" type="id" />
+    <item name="recipients" type="id" />
+    <item name="preview" type="id" />
+    <item name="clear_session" type="id" />
+    <item name="catalog" type="id" />
+    <item name="choose_mode" type="id" />
+    <item name="pick_contact" type="id" />
+    <item name="material" type="id" />
+    <item name="profile_input" type="id" />
+</resources>
