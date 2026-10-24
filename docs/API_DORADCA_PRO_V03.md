@@ -1,3 +1,11 @@
+> Dokument historyczny (0.3–0.5). Wymagania sprzeczne z Compliance & Security 1.0 z 23.10.2026 są wycofane. Aktualny zakres: [audyt](COMPLIANCE_AUDIT_2026-10-23.md) i [README](../README.md). Nie wdrażać poczekalni, linków per odbiorca, synchronizacji kontaktów ani dawnych kolejek.
+
+# Historyczny projekt v0.3 — wyłączony w 0.4.0
+
+Poniższy opis dotyczy prototypu, nie działającej integracji. W 0.4.0 usunięto formularz tokenu, klienta GET oraz stary deep link z tekstem. Nie potwierdzono serwera ani autoryzacji. Nie należy implementować tego projektu bez uzgodnienia z właścicielem rzeczywistego backendu. Aktualny stan: [audyt P0](P0_AUDIT.md).
+
+---
+
 # Integracja SMS Samsung z Doradca.pro — kontrakt v0.3
 
 ## Status
