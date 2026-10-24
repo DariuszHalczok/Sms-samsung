@@ -54,7 +54,11 @@ def hide_keyboard():
 
 def message_node():
     root = None
-    for attempt in range(10):
+    for attempt in range(16):
+        if attempt in (5, 10):
+            # Verify the app is foregrounded; never dismiss sensitive dialogs blindly.
+            adb('shell', 'am', 'start', '-W', '-n', COMPONENT)
+            time.sleep(0.5)
         root = hierarchy()
         for node in root.iter('node'):
             if node.get('resource-id') == PACKAGE + ':id/message':
@@ -65,7 +69,8 @@ def message_node():
         viewport = next((rectangle(node) for node in root.iter('node')
                          if node.get('resource-id') == PACKAGE + ':id/composer_scroll'), None)
         if not viewport:
-            break
+            time.sleep(0.35)
+            continue
         left, top, right, bottom = viewport
         x = (left + right) // 2
         lower = top + (bottom - top) * 8 // 10
@@ -110,6 +115,8 @@ def main():
     else:
         raise AssertionError('Background process did not terminate')
     adb('shell', 'am', 'start', '-W', '-n', COMPONENT)
+    # Device launch and accessibility hierarchy can lag behind the restarted process.
+    time.sleep(1)
     node, _ = message_node()
     assert node.get('text') == baseline_text, 'Customer draft restored after process death'
     assert adb('shell', 'pidof', PACKAGE).strip() != old_pid, 'Process was not recreated'
