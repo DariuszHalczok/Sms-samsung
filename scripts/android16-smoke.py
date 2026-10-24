@@ -65,7 +65,10 @@ def message_node():
         viewport = next((rectangle(node) for node in root.iter('node')
                          if node.get('resource-id') == PACKAGE + ':id/composer_scroll'), None)
         if not viewport:
-            break
+            # Right after a process restart the window may not be focused yet, so the
+            # dump can lack the app tree. Wait and dump again instead of giving up.
+            time.sleep(1)
+            continue
         left, top, right, bottom = viewport
         x = (left + right) // 2
         lower = top + (bottom - top) * 8 // 10
