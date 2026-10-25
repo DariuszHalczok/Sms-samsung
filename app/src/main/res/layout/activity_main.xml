@@ -1,0 +1,49 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/composer_scroll" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:fillViewport="true" android:saveEnabled="false"
+    android:importantForAutofill="noExcludeDescendants">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:orientation="vertical" android:padding="20dp">
+        <TextView style="@style/Body" android:text="@string/pilot_badge" android:textSize="11sp" android:textStyle="bold" android:textColor="@color/accent" android:letterSpacing="0.08"/>
+        <TextView style="@style/Heading" android:text="@string/app_title" android:textSize="30sp"/>
+        <TextView style="@style/Body" android:text="@string/app_tagline" android:layout_marginBottom="24dp"/>
+        <LinearLayout style="@style/Card">
+            <TextView style="@style/Heading" android:text="@string/mode_heading"/>
+            <TextView android:id="@id/mode" style="@style/Body" android:text="@string/mode_empty" android:textColor="@color/ink"/>
+            <TextView android:id="@+id/mode_hint" style="@style/Body"/>
+            <Button android:id="@id/choose_mode" style="@style/Action" android:text="@string/choose_mode"/>
+        </LinearLayout>
+        <LinearLayout style="@style/Card">
+            <TextView style="@style/Heading" android:text="@string/recipient_heading"/>
+            <TextView android:id="@id/recipients" style="@style/Heading" android:text="@string/recipient_empty"/>
+            <TextView android:id="@+id/recipient_count" style="@style/Body"/>
+            <Button android:id="@id/pick_contact" style="@style/Action" android:text="@string/pick_contact"/>
+            <Button android:id="@+id/choose_recipient" style="@style/Action" android:text="@string/choose_recipient"/>
+            <Button android:id="@+id/remove_recipient" style="@style/Action" android:text="@string/remove_recipient" android:visibility="gone"/>
+        </LinearLayout>
+        <LinearLayout android:id="@+id/material_section" style="@style/Card" android:visibility="gone">
+            <TextView style="@style/Heading" android:text="@string/material_heading"/>
+            <TextView android:id="@+id/profile_status" style="@style/Body"/>
+            <TextView android:id="@id/material" style="@style/Body" android:text="@string/material_empty" android:textColor="@color/ink"/>
+            <Button android:id="@id/catalog" style="@style/Action" android:text="@string/catalog"/>
+            <Button android:id="@+id/replies" style="@style/Action" android:text="@string/replies"/>
+        </LinearLayout>
+        <LinearLayout style="@style/Card">
+            <TextView android:id="@+id/message_label" style="@style/Heading" android:text="@string/body_heading"/>
+            <EditText android:id="@id/message" android:layout_width="match_parent" android:layout_height="wrap_content"
+                android:minHeight="136dp" android:minLines="4" android:gravity="top|start" android:hint="@string/body_hint"
+                android:inputType="textMultiLine|textCapSentences|textNoSuggestions" android:imeOptions="flagNoPersonalizedLearning"
+                android:maxLength="4000" android:saveEnabled="false" android:textSize="17sp" android:padding="12dp"
+                android:background="@drawable/panel" android:textColor="@color/ink" android:textColorHint="@color/muted"/>
+            <TextView android:id="@+id/message_feedback" style="@style/Body" android:layout_marginTop="12dp"/>
+            <TextView style="@style/Body" android:text="@string/body_feedback_note" android:textSize="13sp"/>
+        </LinearLayout>
+        <ProgressBar android:id="@+id/loading" android:layout_width="32dp" android:layout_height="32dp" android:layout_gravity="center" android:visibility="gone"/>
+        <TextView android:id="@+id/load_status" style="@style/Body" android:visibility="gone" android:accessibilityLiveRegion="polite"/>
+        <Button android:id="@id/preview" style="@style/PrimaryAction" android:text="@string/preview"/>
+        <TextView style="@style/Body" android:text="@string/editor_hint" android:textSize="13sp" android:layout_marginTop="12dp"/>
+        <Button android:id="@id/clear_session" style="@style/Action" android:text="@string/clear_session"/>
+        <Button android:id="@+id/more" style="@style/Action" android:text="@string/more"/>
+        <TextView android:id="@+id/version_footer" style="@style/Body" android:textSize="12sp" android:layout_marginTop="20dp"/>
+    </LinearLayout>
+</ScrollView>

@@ -1,28 +1,34 @@
-# SMS Samsung — Asystent SMS (beta 0.2)
+# SMS Samsung — Relationship Engine 0.7.0
 
-Aplikacja Android 16 / Galaxy S24 Ultra. Działa na danych kontaktowych widocznych na telefonie (w tym zsynchronizowanych z kontem Google).
+Android 8+ (min26), target35, compile36. Wersja testowa dostosowana do specyfikacji Compliance & Security 1.0 z 23.10.2026. [Audyt przed zmianami](docs/COMPLIANCE_AUDIT_2026-10-23.md) opisuje rozbieżności i zastąpienie projektu poczekalni.
 
-## Funkcje beta 0.2
-- Wyszukuj kontakty po imieniu lub nazwisku i zaznaczaj wielu odbiorców.
-- Wybieraj grupy kontaktów, o ile są dostępne przez systemowy Contacts Provider.
-- Dyktuj **treść** wiadomości przez usługę rozpoznawania mowy Android.
-- Udostępniaj tekst z aplikacji ChatGPT do SMS Samsung przez systemowe menu "Udostępnij", a następnie wybieraj odbiorców.
-- Przed wysyłką wyświetlany jest podgląd odbiorców i wiadomości.
-- Każdego SMS-a otwiera się indywidualnie w domyślnej aplikacji SMS; wysłanie wymaga ręcznego potwierdzenia. Aplikacja nie stwierdza, czy SMS rzeczywiście wysłano.
+- Nowy ekran kroków: cel, wybrana osoba i treść; sekcja materiałów pojawia się dla wcześniejszej prośby. Można usunąć jedną osobę, a zmiana celu z treścią wymaga potwierdzenia. Odpowiedzi na zamówiony materiał są edytowalne i nadal wymagają potwierdzenia kontekstu przed edytorem.
+- Kontakty i prywatne szkice pozostają w RAM telefonu. Brak synchronizacji, trwałej bazy klientów, logowania treści i danych kontaktów, SDK analitycznych oraz integracji AI. Brak READ_CONTACTS: systemowy picker udostępnia jeden wskazany numer. Lokalny CSV pozostaje opcją; import nie przenosi zgód. Max30 to ograniczenie interfejsu.
+- Trzy jawne cele: prywatny, wcześniej zamówiony materiał, marketing. **Marketing zablokowany** do czasu rzeczywistej weryfikacji uprzedniej zgody właściwego administratora, celu i kanału SMS. Oświadczenie doradcy ani ręczna wysyłka nie są taką weryfikacją.
+- Brak domyślnych pretekstów i szablonów marketingowych. Materiał wybiera się w granicach wcześniejszej prośby. Aplikacja nie klasyfikuje automatycznie prawnego charakteru wpisanego tekstu.
+- Użytkownik osobno wybiera odbiorcę, czyta numer i pełną treść, potwierdza kontekst, otwiera `ACTION_SENDTO smsto:`. Brak kolejki, automatycznego przechodzenia, ponagleń, SMS w tle, uprawnień do wysyłania/czytania SMS. Otwarcie edytora nie potwierdza wysłania, doręczenia ani odczytu.
+- Jedyna komunikacja sieciowa to GET `https://doradca.pro/api/relationship/catalog/{public_profile_uuid}`. Bez odbiorcy, treści, tokenu doradcy, parametrów query, przekierowań lub cookies zarządzanych przez aplikację. Katalog wymaga wdrożenia nowego modułu na backendzie; niedostępność nie uruchamia zastępczych linków.
+- Publiczny link `https://doradca.pro/edukacja/{public_profile_uuid}/{material}` jest wspólny dla odbiorców i identyfikuje tylko doradcę oraz materiał. Dawne `/c/{recipient_token}` i POST kontaktów usunięto we wszystkich wariantach.
+- FLAG_SECURE, jawne wykluczenie backupu i transferu urządzenia, stan roboczy poza Bundle/SavedState, brak uczenia klawiatury/autofill. Obrót zachowuje RAM; zamknięcie Activity, śmierć procesu i „Wyczyść sesję” kończą szkice. Jedynym nowym trwałym ustawieniem jest publiczny UUID profilu doradcy (bez tokenów i danych odbiorców). Czyszczenie sesji go zachowuje; usuwa się go osobno w Dodatkowe opcje → Profil doradcy. Zmiana/usunięcie profilu czyści powiązany materiał i treść. Stara lokalna historia agregatów jest usuwana przy uruchomieniu. Android, klawiatura, źródłowy CSV, operator i natywna aplikacja SMS mogą niezależnie przetwarzać dane.
 
-## Ograniczenia
-- **Polecenie wypowiedziane w samej rozmowie ChatGPT nie uruchamia jeszcze aplikacji ani nie odczytuje jej kontaktów.** To wymaga oddzielnego, świadomie autoryzowanego mostu integracyjnego (np. backend + parowanie urządzenia i powiadomienie aplikacji albo obsługa linku w urządzeniu).
-- Dyktowanie w aplikacji rozpoznaje treść, a nie polecenia rozpoznawania nazwisk.
-- Wybór grup zależy od konta i sposobu synchronizacji; nie wszystkie etykiety Google Contacts są wystawiane jako systemowe grupy.
-- Nie korzysta z SEND_SMS i nie wysyła automatycznie. Brak masowej wysyłki bezpośredniej.
-- Wymaga uprawnienia READ_CONTACTS udzielonego na telefonie. Nie wysyła książki kontaktów na serwer.
-- Numery różnych formatów mogą pojawić się podwójnie; przed wysyłką należy zweryfikować listę.
+## Integracja i granice gotowości
 
-## Instalacja
-Otwórz [Actions](https://github.com/DariuszHalczok/Sms-samsung/actions), wybierz najnowsze udane uruchomienie **Build Android APK**, pobierz artefakt `sms-samsung-debug-apk`, rozpakuj ZIP i zainstaluj APK. Wersja debugowa wymaga testów i nie służy do dystrybucji produkcyjnej.
+Nowy moduł Relationship Engine jest w prywatnym repo Doradca.pro. Implementuje publiczny katalog, referencyjny anonimowy kalkulator, aktywne zgłoszenie konsultacji/współpracy/marketingu, odrębny checkbox marketingu, zaszyfrowane dane, historię i wycofanie zgód oraz ACL doradcy. Nie jest wdrożony ani połączony z rzeczywistymi kontami CRM. Kalkulator jest przykładem edukacyjnym; komplet branżowych materiałów wymaga przygotowania i zatwierdzenia. Brak fizycznego testu Samsunga.
 
-## Połączenie z ChatGPT — szkic wiadomości
-- W ChatGPT przygotuj tekst i użyj **Udostępnij** → **SMS Samsung** (Android). To najprostsza metoda przekazania treści.
-- Alternatywnie aplikacja obsługuje link `smssamsung://compose?text=...` (tekst powinien być zakodowany w URL). Zewnętrzne aplikacje mogą różnie traktować linki niestandardowych schematów.
-- Import przekazuje **wyłącznie treść SMS** (do 4000 znaków). Odbiorców wybierasz na telefonie. Żaden SMS nie jest wysyłany automatycznie.
-- Wydawanie poleceń w czacie głosowym nie daje aplikacji dostępu do kontaktów i nie uruchamia jej bezpośrednio. Do tego potrzebna byłaby dodatkowa integracja z autoryzowanym backendem i uwierzytelnianiem telefonu.
+Nie wdrażać starych PR/artefaktów 0.4/0.5. Wcześniejsze dokumenty mają oznaczenie historyczne; nowa specyfikacja ma pierwszeństwo. Produkcja wymaga [odbioru i ustalenia ról](docs/RELEASE_ACCEPTANCE.md), rzeczywistej integracji, testu bezpieczeństwa i opinii prawnej.
+
+## Prezentacja i pilotaż
+
+[Pakiet marketingowy](marketing/README.md): lokalna prezentacja HTML, pozycjonowanie, szkice postów i zamówionej prezentacji, scenariusz demo, FAQ oraz 14-dniowy plan pilotażu. Materiały oznaczają stan funkcji i nie deklarują gotowości prawnej, produkcyjnej ani wyników sprzedaży. Nie opublikowano kampanii i nie wysłano wiadomości do innych osób.
+
+## Budowanie i testowanie
+
+JDK17, SDK36, Gradle Wrapper8.11.1 ze sprawdzaną sumą dystrybucji:
+
+```sh
+./gradlew :app:testDebugUnitTest :app:lintDebug :app:assembleDebug :app:assembleDebugAndroidTest :app:assembleRelease
+./gradlew :app:connectedDebugAndroidTest
+python3 scripts/check-apk-permissions.py --aapt "$ANDROID_HOME/build-tools/36.0.0/aapt" --debug app/build/outputs/apk/debug/app-debug.apk --release app/build/outputs/apk/release/app-release-unsigned.apk
+```
+
+[GitHub Actions](https://github.com/DariuszHalczok/Sms-samsung/actions) publikuje `sms-samsung-debug-apk` z `SHA256SUMS` (14dni). Podpis debug jest testowy i może różnić się między runnerami. Rozpakuj, sprawdź `sha256sum -c SHA256SUMS`, zainstaluj `adb install -r app-debug.apk`. Konflikt podpisów może wymagać usunięcia starej wersji. Release APK pozostaje bez podpisu produkcyjnego. CI używa danych syntetycznych; nie wysyła SMS i nie uruchamia edytora SMS.

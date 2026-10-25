@@ -1,23 +1,22 @@
-# Doradca.pro → SMS Samsung: szybki import CSV
+> Dokument historyczny (0.3–0.5). Wymagania sprzeczne z Compliance & Security 1.0 z 23.10.2026 są wycofane. Aktualny zakres: [audyt](COMPLIANCE_AUDIT_2026-10-23.md) i [README](../README.md). Nie wdrażać poczekalni, linków per odbiorca, synchronizacji kontaktów ani dawnych kolejek.
 
-## Etap 1: działa lokalnie, bez API i bez dodatkowej bazy klientów
-Po filtrowaniu klientów w Doradca.pro wyeksportuj CSV w UTF-8:
+# Doradca.pro → SMS Samsung: import CSV w 0.4.0
+
+Eksportuj zatwierdzonych klientów z Doradca.pro w UTF-8 (opcjonalny BOM), z przecinkiem lub średnikiem. Przykład z fikcyjnym kontaktem testowym, przeznaczony wyłącznie do importu:
+
 ```csv
 name;phone
-Jan Kowalski;+48500111222
-Anna Nowak;+48500333444
+Test Example;+12025550101
 ```
-Obsługiwane nagłówki numeru: `phone`, `telefon`, `numer`, `mobile`.
-Obsługiwane nagłówki nazwy: `name`, `imie`, `imię`, `klient`, `nazwisko`.
-Separator: przecinek lub średnik; bez pól zawierających separator w cudzysłowach.
-Maksymalnie 30 unikalnych odbiorców i 128 KB na plik. Polski numer zapisuj najlepiej jako `+48XXXXXXXXX`.
 
-## Telefon
-SMS Samsung → Importuj listę klientów z Doradca.pro (CSV) → wybierz plik → potwierdź → wpisz SMS → sprawdź → otwórz wiadomość w systemowej aplikacji SMS.
-Nadal każdą wiadomość zatwierdzasz osobno. APK nie potwierdza doręczenia ani kliknięcia linku.
+Nagłówek numeru: dokładnie jedna kolumna `phone`, `telefon`, `numer` lub `mobile`. Opcjonalna nazwa: najwyżej jedna z `name`, `imie`, `imię`, `klient`, `nazwisko`. Wielkość liter nagłówków nie ma znaczenia. Pozostałe kolumny są ignorowane. `{nazwisko}` oznacza część nazwy po pierwszej spacji, dlatego eksportuj pełną nazwę, jeśli używasz tego pola.
 
-## Etap 2: docelowa integracja Doradca.pro
-Doradca.pro zarządza filtrami produktów, uprawnieniami, zgodami, listami kampanii, indywidualnymi linkami i analityką kliknięć. Telefon nie powinien przechowywać trwałej kopii CRM.
-Rekomendacja: jednorazowy krótko żyjący kod kampanii + uwierzytelniony HTTPS backend (OAuth/parowanie telefonu), pobranie listy przez aplikację po zatwierdzeniu użytkownika. Nie umieszczać numerów telefonów, tokenów sesji ani nazwisk w publicznych deep-linkach.
-Zwykły SMS nie umożliwia wiarygodnego wykrycia odczytania. Kliknięcia unikalnych linków można mierzyć na serwerze Doradca.pro z odpowiednimi informacjami dla odbiorców.
-Nie implementować komunikacji backendowej bez uzgodnienia rzeczywistych endpointów i mechanizmu autoryzacji Doradca.pro.
+Cytowanie zgodne z RFC4180: separator i podwojone cudzysłowy wewnątrz pól, zakończenia CRLF/LF. Dodatkowe pola mogą zawierać cytowane nowe linie; nazwa odbiorcy nie może zawierać znaków sterujących. Po zamykającym cudzysłowie wymagany separator, koniec wiersza albo EOF. Brak cichego naprawiania błędnych rekordów.
+
+Limit: 128 KiB, 30 unikalnych numerów, 100 znaków nazwy. Numery PL mogą mieć 9 cyfr; zagraniczne podawaj z `+` lub `00`. libphonenumber sprawdza poprawność planu numeracji, nie właściciela, aktywności numeru ani zgody na SMS.
+
+Identyczne rekordy po normalizacji numeru łączą się; sprzeczne nazwy dla jednego numeru blokują import. Każdy błędny numer, niepoprawny UTF-8, niedomknięty cudzysłów lub różna liczba kolumn odrzuca całą paczkę. Bieżąca paczka zmienia się dopiero po udanym imporcie i potwierdzeniu. CSV nie importuje linków ani potwierdzeń zgód.
+
+Na telefonie wybierz „Import CSV z Doradca.pro”, potwierdź zastąpienie listy, edytuj treść i przejrzyj każdego odbiorcę. Przed przeglądem potwierdź weryfikację uprawnień, celu, podstawy kontaktu, sprzeciwów i powtórzeń w CRM. Każda wiadomość wymaga osobnego otwarcia edytora SMS i ręcznej decyzji w nim.
+
+Plik CSV pozostaje w wybranym źródle; aplikacja go nie kopiuje i nie usuwa. Nie przechowuje klientów po zakończeniu sesji. Doradca.pro pozostaje jedynym CRM. Import lokalny nie weryfikuje serwerowo zgód i nie jest pełną integracją produkcyjną.
