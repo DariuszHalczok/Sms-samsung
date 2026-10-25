@@ -79,10 +79,27 @@ def message_node():
         adb('shell', 'input', 'swipe', str(x), str(start), str(x), str(end), '300')
     # Structural diagnostics only: no contacts, private text or screenshots.
     if root is not None:
+        # Nodes of every package: an empty app list alone cannot tell a crash dialog or another window from a slow UI.
         (REPORTS / 'visibility-diagnostic.json').write_text(json.dumps([
-            {key: node.get(key) for key in ('resource-id', 'class', 'bounds', 'scrollable')}
-            for node in root.iter('node') if node.get('package') == PACKAGE
+            {key: node.get(key) for key in ('package', 'resource-id', 'class', 'bounds', 'scrollable')}
+            for node in root.iter('node')
         ], indent=2) + '\n')
+    # Window focus, task state and crash buffer: system metadata only, never app content.
+    for name, command in (
+        ('window-focus.txt', ('shell', 'dumpsys', 'window', 'displays')),
+        ('activities.txt', ('shell', 'dumpsys', 'activity', 'activities')),
+        ('logcat-crash.txt', ('logcat', '-d', '-b', 'crash')),
+        ('logcat-app.txt', ('logcat', '-d', '-t', '400', '--pid=' + (adb('shell', 'pidof', PACKAGE, check=False).decode().strip().split() or ['0'])[0])),
+    ):
+        try:
+            text = adb(*command, check=False).decode(errors='replace')
+            if name == 'window-focus.txt':
+                text = '\n'.join(line for line in text.splitlines() if re.search(r'mCurrentFocus|mFocusedApp|mFocusedWindow', line))
+            elif name == 'activities.txt':
+                text = '\n'.join(line for line in text.splitlines() if re.search(r'mResumedActivity|topResumedActivity|ResumedActivity|Task\{', line))
+            (REPORTS / name).write_text(text[:60000])
+        except Exception as error:  # diagnostics must never mask the original failure
+            (REPORTS / name).write_text('diagnostic failed: ' + repr(error)[:300] + '\n')
     raise AssertionError('Message field not visible')
 
 
